@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -103,6 +103,12 @@ class Color(tuple):
 
         Returns the color as a tuple of four floating point numbers giving
         the red, green, blue and alpha components as 0.0 to 1.0 values.
+
+    .. attribute:: premultiplied
+
+        Returns the color as a tuple of four floating point numbers giving
+        the red, green, blue and alpha components as 0.0 to 1.0 values, with
+        the red, green, and blue components premultiplied by the alpha.
 
     .. attribute:: alpha
 
@@ -235,6 +241,12 @@ class Color(tuple):
                 )
 
         return self._rgba
+
+    @property
+    def premultiplied(self):
+        r, g, b, a = self.rgba
+
+        return (r * a, g * a, b * a, a)
 
     @property
     def hls(self):

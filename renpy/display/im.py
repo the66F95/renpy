@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -34,6 +34,7 @@ import threading
 import time
 import io
 import os.path
+import sys
 
 import pygame_sdl2
 import renpy
@@ -65,23 +66,13 @@ class CacheEntry(object):
         self.time = 0
 
     def size(self):
-        rv = 0
+        if renpy.config.cache_surfaces:
+            multiplier = 2.34 # 1 for the texture, 1 for the surface, .34 for mipmaps.
+        else:
+            multiplier = 1.34 # 1 for the texture, .34 for mipmaps.
 
-        if self.surf is not None:
-            rv += self.width * self.height
+        return int(self.bounds[2] * self.bounds[3] * multiplier)
 
-        if self.texture is not None:
-
-            has_mipmaps = getattr(self.texture, "has_mipmaps", None)
-
-            if has_mipmaps and has_mipmaps():
-                mipmap_multiplier = 1.34
-            else:
-                mipmap_multiplier = 1.0
-
-            rv += int(self.bounds[2] * self.bounds[3] * mipmap_multiplier)
-
-        return rv
 
 # This is the singleton image cache.
 
@@ -97,6 +88,9 @@ class Cache(object):
         # A map from Image object to CacheEntry.
         self.cache = { }
 
+        # The size of all entries in the cache, in pixels.
+        self.cache_size = 0
+
         # A list of Image objects that we want to preload.
         self.preloads = [ ]
 
@@ -111,10 +105,6 @@ class Cache(object):
 
         # Is the preload_thread alive?
         self.keep_preloading = True
-
-        # A map from image object to surface, only for objects that have
-        # been pinned into memory.
-        self.pin_cache = { }
 
         # Images that we tried, and failed, to preload.
         self.preload_blacklist = set()
@@ -157,15 +147,7 @@ class Cache(object):
         """
 
         with self.lock:
-            rv = sum(i.size() for i in self.cache.values())
-
-        # print("Total cache size: {:.1f}/{:.1f} MB (Textures {:.1f} MB)".format(
-        #     4.0 * rv / 1024 / 1024,
-        #     4.0 * self.cache_limit / 1024 / 1024,
-        #     1.0 * renpy.exports.get_texture_size()[0] / 1024 / 1024,
-        #     ))
-
-        return rv
+            return self.cache_size
 
     def get_current_size(self, generations):
         """
@@ -212,8 +194,10 @@ class Cache(object):
         self.lock.acquire()
 
         self.preloads = [ ]
-        self.pin_cache = { }
+
         self.cache = { }
+        self.cache_size = 0
+
         self.first_preload_in_tick = True
 
         self.added.clear()
@@ -283,6 +267,9 @@ class Cache(object):
             if image.pixel_perfect:
                 rv.add_property("pixel_perfect", True)
 
+            if ce.bounds == (0, 0, ce.width, ce.height):
+                rv.cached_texture = ce.texture
+
             return rv
 
         if render:
@@ -321,15 +308,11 @@ class Cache(object):
         # Otherwise, we load the image ourselves.
         if ce is None:
 
-            if image in self.pin_cache:
-                surf = self.pin_cache[image]
-            else:
-
-                if not predict:
-                    with renpy.game.ExceptionInfo("While loading %r:", image):
-                        surf = image.load()
-                else:
+            if not predict:
+                with renpy.game.ExceptionInfo("While loading %r:", image):
                     surf = image.load()
+            else:
+                surf = image.load()
 
             w, h = size = surf.get_size()
 
@@ -348,16 +331,20 @@ class Cache(object):
             with self.lock:
 
                 ce = CacheEntry(image, surf, bounds)
-                self.cache[image] = ce
 
-                # Indicate that this surface had changed.
-                renpy.display.render.mutated_surface(ce.surf)
+                if image in self.cache:
+                    self.kill(self.cache[image])
+
+                self.cache[image] = ce
+                self.cache_size += ce.size()
 
                 if renpy.config.debug_image_cache:
                     if predict:
                         renpy.display.ic_log.write("Added %r (%.02f%%)", ce.what, 100.0 * self.get_total_size() / self.cache_limit)
                     else:
                         renpy.display.ic_log.write("Total Miss %r", ce.what)
+
+            renpy.display.render.mutated_surface(ce.surf)
 
         # Move it into the current generation.
 
@@ -404,7 +391,6 @@ class Cache(object):
             with self.lock:
                 self.kill(ce)
 
-        # Done. Return the surface or texture.
         return rv
 
     # This kills off a given cache entry.
@@ -414,6 +400,7 @@ class Cache(object):
         if ce.surf is not None:
             renpy.display.draw.mutated_surface(ce.surf)
 
+        self.cache_size -= ce.size()
         del self.cache[ce.what]
 
         if renpy.config.debug_image_cache:
@@ -564,39 +551,6 @@ class Cache(object):
         with self.lock:
             self.cleanout()
 
-        # If we have time, preload pinned images.
-        if self.keep_preloading and not renpy.game.less_memory:
-
-            workset = set(renpy.store._cache_pin_set)
-
-            # Remove things that are not in the workset from the pin cache,
-            # and remove things that are in the workset from pin cache.
-            for i in list(self.pin_cache.keys()):
-
-                if i in workset:
-                    workset.remove(i)
-                else:
-                    surf = self.pin_cache[i]
-
-                    del self.pin_cache[i]
-
-            # For each image in the worklist...
-            for image in workset:
-
-                if image in self.preload_blacklist:
-                    continue
-
-                # If we have normal preloads, break out.
-                if self.preloads:
-                    break
-
-                try:
-                    surf = image.load()
-                    self.pin_cache[image] = surf
-                    renpy.display.draw.load_texture(surf)
-                except Exception:
-                    self.preload_blacklist.add(image)
-
     def add_load_log(self, filename):
 
         if not renpy.config.developer:
@@ -633,6 +587,13 @@ class ImageBase(renpy.display.displayable.Displayable):
     optimize_bounds = False
     oversample = 1
     pixel_perfect = False
+    obsolete = True
+
+    obsolete_list = [ ]
+
+
+    # If the image failed to load, a placeholder used to report the error.
+    fail = None
 
     def after_upgrade(self, version):
         if version < 1:
@@ -652,6 +613,14 @@ class ImageBase(renpy.display.displayable.Displayable):
 
         super(ImageBase, self).__init__(**properties)
         self.identity = (type(self).__name__,) + args
+
+        if self.obsolete and renpy.game.context().init_phase:
+            frame = sys._getframe(2)
+            filename = frame.f_code.co_filename
+            line = frame.f_lineno
+            classname = type(self).__name__
+
+            self.obsolete_list.append((filename, line, classname))
 
     def __hash__(self):
         return hash(self.identity)
@@ -673,7 +642,20 @@ class ImageBase(renpy.display.displayable.Displayable):
         raise Exception("load method not implemented.")
 
     def render(self, w, h, st, at):
-        return cache.get(self, render=True)
+        try:
+            return cache.get(self, render=True)
+        except Exception as e:
+            if renpy.config.raise_image_load_exceptions:
+                raise
+
+            self.fail = renpy.text.text.Text(str(e), style="_image_error")
+            return self.fail.render(w, h, st, at)
+
+    def get_placement(self):
+        if self.fail is not None:
+            return self.fail.get_placement() # type: ignore
+        else:
+            return super(ImageBase, self).get_placement()
 
     def predict_one(self):
         renpy.display.predict.image(self)
@@ -711,6 +693,8 @@ class Image(ImageBase):
     This image manipulator loads an image from a file.
     """
 
+    obsolete = False
+
     is_svg = False
     dpi = 96
 
@@ -721,7 +705,7 @@ class Image(ImageBase):
 
         if "@" in filename:
             base = filename.rpartition(".")[0]
-            extras = base.partition("@")[2].split(",")
+            extras = base.rpartition("@")[2].partition("/")[0].split(",")
 
             for i in extras:
                 try:
@@ -841,6 +825,8 @@ class Data(ImageBase):
         loaded from disk.)
     """
 
+    obsolete = False
+
     def __init__(self, data, filename, **properties):
         super(Data, self).__init__(data, filename, **properties)
         self.data = data
@@ -855,6 +841,8 @@ class Data(ImageBase):
 
 
 class ZipFileImage(ImageBase):
+
+    obsolete = False
 
     def __init__(self, zipfilename, filename, mtime=0, **properties):
         super(ZipFileImage, self).__init__(zipfilename, filename, mtime, **properties)
@@ -1977,6 +1965,29 @@ class AlphaMask(ImageBase):
         return self.base.predict_files() + self.mask.predict_files()
 
 
+class UnoptimizedTexture(ImageBase):
+    """
+    :undocumented:
+
+    This is used by unoptimized_texture to force a texture to load without
+    optimizing the bounds.
+    """
+
+    def __init__(self, im, **properties):
+        super(UnoptimizedTexture, self).__init__(im, optimize_bounds=False, **properties)
+        self.image = image(im)
+
+    def get_hash(self):
+        return self.image.get_hash()
+
+    def load(self):
+        return self.image.load()
+
+    def predict_files(self):
+        return self.image.predict_files()
+
+
+
 def image(arg, loose=False, **properties):
     """
     :doc: im_image
@@ -2120,7 +2131,40 @@ def load_rgba(data, size):
     return renpy.display.draw.load_texture(surf)
 
 
+def unoptimized_texture(d):
+    """
+    :undocumented:
+
+    If `d` is an image manipulator, return an image manipulator that loads
+    the image without optimizing the bounds. Otherwise, return `d`.
+    """
+
+    if isinstance(d, ImageBase):
+        return UnoptimizedTexture(d)
+    else:
+        return d
+
+
+def render_for_texture(d, width, height, st, at):
+    """
+    :undocumented:
+
+    Attempts to render `d` for the purpose of getting the underlying texture,
+    rather than a Render. A render may be returned if `d` is not an UnoptimizedTexture
+    returned by unoptimized_texture.
+    """
+
+    if isinstance(d, UnoptimizedTexture):
+        return renpy.display.im.cache.get(d, texture=True)
+    else:
+        return renpy.display.render.render(d, width, height, st, at)
+
+
 def reset_module():
+    """
+    :undocumented:
+    """
+
     print("Resetting cache.")
 
     global cache

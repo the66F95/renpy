@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -21,6 +21,8 @@
 
 from __future__ import division, absolute_import, with_statement, print_function, unicode_literals
 from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode # *
+
+import renpy
 
 import requests
 import re
@@ -126,9 +128,12 @@ def download_ranges(url, ranges, destination, progress_callback=None):
 
             old_ranges = list(ranges)
 
-            headers = { 'Range' : 'bytes=' + ', '.join('%d-%d' % (start, end) for start, end in ranges[:10]) }
+            headers = {
+                'Range' : 'bytes=' + ', '.join('%d-%d' % (start, end) for start, end in ranges[:10]),
+                "Accept-Encoding": "identity",
+                }
 
-            r = requests.get(url, headers=headers, stream=True)
+            r = requests.get(url, headers=headers, stream=True, timeout=10, proxies=renpy.exports.proxies)
             r.raise_for_status()
 
             blocks = [ ]
@@ -207,7 +212,7 @@ def download(url, ranges, destination, progress_callback=None):
     total_size = sum(i[1] for i in ranges)
     downloaded = 0
 
-    r = requests.get(url, stream=True)
+    r = requests.get(url, stream=True, headers={"Accept-Encoding": "identity"}, timeout=10, proxies=renpy.exports.proxies)
     r.raise_for_status()
 
     blocks = [ ]

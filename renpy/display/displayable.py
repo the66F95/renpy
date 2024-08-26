@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -192,6 +192,9 @@ class Displayable(renpy.object.Object):
     # Used by a transition (or transition-like object) to determine how long to
     # delay for.
     delay = None # type: float|None
+
+    # An id that can be used to identify this displayable.
+    id = None # type: str|None
 
     def __ne__(self, o):
         return not (self == o)
@@ -580,11 +583,15 @@ class Displayable(renpy.object.Object):
             if i is not None:
                 speech = i._tts()
 
-                if speech.strip():
-                    if isinstance(speech, renpy.display.tts.TTSDone):
+                if isinstance(speech, renpy.display.tts.TTSDone):
+                    if speech.strip():
                         rv = [ speech ]
                     else:
-                        rv.append(speech)
+                        rv = [ ]
+                    break
+
+                if speech.strip():
+                    rv.append(speech)
 
 
         rv = ": ".join(rv)

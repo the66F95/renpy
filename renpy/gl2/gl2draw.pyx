@@ -1,6 +1,6 @@
 #cython: profile=False
 #@PydevCodeAnalysisIgnore
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -61,6 +61,11 @@ from renpy.gl2.gl2model cimport GL2Model
 from renpy.gl2.gl2texture import Texture, TextureLoader
 from renpy.gl2.gl2shadercache import ShaderCache
 
+try:
+    import emscripten
+except ImportError:
+    emscripten = None
+
 # Cache various externals, so we can use them more efficiently.
 cdef int DISSOLVE, IMAGEDISSOLVE, PIXELLATE
 DISSOLVE = renpy.display.render.DISSOLVE
@@ -75,6 +80,8 @@ vsync = True
 
 # A list of frame end times, used for the same purpose.
 frame_times = [ ]
+
+
 
 cdef class GL2Draw:
 
@@ -126,6 +133,9 @@ cdef class GL2Draw:
 
         # Was the window maximized the last time update was called?
         self.maximized = False
+
+        # The old value of fullscreen.
+        self.old_fullscreen = False
 
     def get_texture_size(self):
         """
@@ -358,6 +368,8 @@ cdef class GL2Draw:
 
         if renpy.android or renpy.ios:
             fullscreen = True
+        elif renpy.emscripten:
+            fullscreen = False
         else:
             fullscreen = renpy.game.preferences.fullscreen
 
@@ -452,6 +464,9 @@ cdef class GL2Draw:
             self.quit()
             return False
 
+        if renpy.emscripten:
+            emscripten.webgl_enable_extension("EXT_texture_filter_anisotropic")
+
         # Load uguu, and init GL.
         renpy.uguu.gl.clear_missing_functions()
         renpy.uguu.gl.load()
@@ -506,17 +521,18 @@ cdef class GL2Draw:
             pygame.display.get_window().recreate_gl_context(always=renpy.emscripten)
 
         # Are we in fullscreen mode?
-        fullscreen = bool(pygame.display.get_window().get_window_flags() & (pygame.WINDOW_FULLSCREEN_DESKTOP | pygame.WINDOW_FULLSCREEN))
+        if renpy.emscripten:
+            fullscreen = bool(emscripten.run_script_int("isFullscreen()"))
+        else:
+            fullscreen = bool(pygame.display.get_window().get_window_flags() & (pygame.WINDOW_FULLSCREEN_DESKTOP | pygame.WINDOW_FULLSCREEN))
 
         # Are we maximized?
         maximized = bool(pygame.display.get_window().get_window_flags() & pygame.WINDOW_MAXIMIZED) and not fullscreen and renpy.config.gl_resize
 
-
         # See if we've ever set the screen position, and if not, center the window.
-        if not fullscreen and not maximized:
-            if not self.ever_set_position:
-                self.ever_set_position = True
-                pygame.display.get_window().set_position(self.get_window_position())
+        if not fullscreen and not maximized and not self.ever_set_position and not renpy.emscripten:
+            self.ever_set_position = True
+            pygame.display.get_window().set_position(self.get_window_position())
 
         # Get the size of the created screen.
         pwidth, pheight = renpy.display.core.get_size()
@@ -605,7 +621,9 @@ cdef class GL2Draw:
 
         fullscreen = renpy.game.preferences.fullscreen
 
-        if renpy.android or renpy.ios:
+        if renpy.emscripten:
+            fullscreen = False
+        elif renpy.android or renpy.ios:
             fullscreen = True
 
         if renpy.game.preferences.physical_size:
@@ -618,9 +636,11 @@ cdef class GL2Draw:
         width *= self.dpi_scale
         height *= self.dpi_scale
 
-        max_w, max_h = self.info["max_window_size"]
-        width = min(width, max_w)
-        height = min(height, max_h)
+        if not renpy.android or renpy.ios or renpy.emscripten:
+            max_w, max_h = self.info["max_window_size"]
+            width = min(width, max_w)
+            height = min(height, max_h)
+
         width = max(width, 256)
         height = max(height, 256)
 
@@ -637,7 +657,12 @@ cdef class GL2Draw:
         """
 
         flags = pygame.display.get_window().get_window_flags()
-        fullscreen = bool(flags & (pygame.WINDOW_FULLSCREEN_DESKTOP | pygame.WINDOW_FULLSCREEN))
+
+        if renpy.emscripten:
+            fullscreen = bool(emscripten.run_script_int("isFullscreen()"))
+        else:
+            fullscreen = bool(flags & (pygame.WINDOW_FULLSCREEN_DESKTOP | pygame.WINDOW_FULLSCREEN))
+
         maximized = bool(flags & pygame.WINDOW_MAXIMIZED)
 
         size = renpy.display.core.get_size()
@@ -650,6 +675,7 @@ cdef class GL2Draw:
             (drawable_size != self.drawable_size) or
             (self.maximized != maximized)
         ):
+
             self.maximized = maximized
             renpy.display.interface.before_resize()
             self.on_resize()
@@ -725,7 +751,7 @@ cdef class GL2Draw:
         # higher pitch.
         BORDER = 64
 
-        width, height = renpy.config.fbo_size
+        width, height = renpy.config.max_texture_size
 
         width = max(self.virtual_size[0] + BORDER, self.drawable_size[0] + BORDER, width)
         width = min(width, max_texture_size, max_renderbuffer_size)
@@ -939,7 +965,7 @@ cdef class GL2Draw:
                     renpy.plog(1, "after broken vsync sleep")
 
 
-    def draw_screen(self, render_tree, flip=True):
+    def draw_screen(self, render_tree, flip=True, screenshot=False):
         """
         Draws the screen.
         """
@@ -958,20 +984,33 @@ cdef class GL2Draw:
         self.load_all_textures(surf)
 
         # Switch to the right FBO, and the right viewport.
-        self.change_fbo(self.default_fbo)
+        if screenshot:
+            self.change_fbo(self.fbo)
+        else:
+            self.change_fbo(self.default_fbo)
 
         # Set up the viewport.
-        x, y, w, h = self.drawable_viewport
+        if screenshot:
+            x = 0
+            y = 0
+            w = surf.width * self.draw_per_virt
+            h = surf.height * self.draw_per_virt
+        else:
+            x, y, w, h = self.drawable_viewport
+
         glViewport(x, y, w, h)
 
         # Clear the screen.
         clear_r, clear_g, clear_b = renpy.color.Color(renpy.config.gl_clear_color).rgb
-        glClearColor(clear_r, clear_g, clear_b, 1.0)
+        glClearColor(clear_r, clear_g, clear_b, 0.0 if screenshot else 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
         # Project the child from virtual space to the screen space.
         cdef Matrix transform
-        transform = Matrix.cscreen_projection(self.virtual_size[0], self.virtual_size[1])
+        if screenshot:
+            transform = Matrix.cscreen_projection(surf.width, surf.height)
+        else:
+            transform = Matrix.cscreen_projection(self.virtual_size[0], self.virtual_size[1])
 
         # Set up the default modes.
         glEnable(GL_BLEND)
@@ -1021,11 +1060,18 @@ cdef class GL2Draw:
                 return
 
             uniforms = { }
+
             if r.uniforms:
                 uniforms.update(r.uniforms)
 
             for i, c in enumerate(r.children):
-                uniforms["tex" + str(i)] = self.render_to_texture(c[0], properties=r.properties)
+                uniforms["tex%d" % i ] = ctex = self.render_to_texture(c[0], properties=r.properties)
+                uniforms["res%d" % i ] = (ctex.texture_width, ctex.texture_height)
+
+            for k, v in list(uniforms.items()):
+                if isinstance(v, Render):
+                    uniforms[k] = ctex = self.render_to_texture(v, properties=r.properties)
+                    uniforms.setdefault(k + "_res", (ctex.texture_width, ctex.texture_height))
 
             if r.mesh is True:
                 mesh = uniforms["tex0"].mesh
@@ -1038,6 +1084,7 @@ cdef class GL2Draw:
                 r.shaders,
                 uniforms)
 
+            r.cached_model.properties = r.properties
 
     def render_to_texture(self, what, alpha=True, properties={}):
         """
@@ -1059,7 +1106,6 @@ cdef class GL2Draw:
             return what.cached_texture
 
         rv = self.texture_loader.render_to_texture(what, properties)
-
         what.cached_texture = rv
 
         return rv
@@ -1169,8 +1215,10 @@ cdef class GL2Draw:
         cdef unsigned char *rpp
         cdef int x, y, pitch
 
-        # A surface the size of the framebuffer.
-        full = renpy.display.pgrender.surface_unscaled(self.drawable_size, False)
+        sw = render_tree.width * self.draw_per_virt
+        sh = render_tree.height * self.draw_per_virt
+
+        full = renpy.display.pgrender.surface_unscaled((sw, sh), True)
         surf = PySurface_AsSurface(full)
 
         # Create an array that can hold densely-packed pixels.
@@ -1178,7 +1226,7 @@ cdef class GL2Draw:
 
         # Draw the last screen to the back buffer.
         if render_tree is not None:
-            self.draw_screen(render_tree, flip=False)
+            self.draw_screen(render_tree, flip=False, screenshot=True)
             glFinish()
 
         # Read the pixels.
@@ -1196,23 +1244,35 @@ cdef class GL2Draw:
         pitch = surf.pitch
         rpp = raw_pixels
 
+        cdef unsigned char r
+        cdef unsigned char g
+        cdef unsigned char b
+        cdef unsigned char a
+
         with nogil:
             for y from 0 <= y < surf.h:
-                for x from 0 <= x < (surf.w * 4):
-                    pixels[x] = rpp[x]
+                for x from 0 <= x < surf.w:
+                    r = rpp[x * 4 + 0]
+                    g = rpp[x * 4 + 1]
+                    b = rpp[x * 4 + 2]
+                    a = rpp[x * 4 + 3]
+
+                    if 0 < a < 255:
+                        r = r * 255 // a
+                        g = g * 255 // a
+                        b = b * 255 // a
+
+                    pixels[x * 4 + 0] = r
+                    pixels[x * 4 + 1] = g
+                    pixels[x * 4 + 2] = b
+                    pixels[x * 4 + 3] = a
 
                 pixels += pitch
                 rpp += surf.w * 4
 
         free(raw_pixels)
 
-        px, py, pw, ph = self.physical_box
-        xmul = self.drawable_size[0] / self.physical_size[0]
-        ymul = self.drawable_size[1] / self.physical_size[1]
-
-        # Crop and flip it, since it's upside down.
-        rv = full.subsurface((px * xmul, py * ymul, pw * xmul, ph * ymul))
-        rv = renpy.display.pgrender.flip_unscaled(rv, False, True)
+        rv = renpy.display.pgrender.flip_unscaled(full, False, True)
 
         return rv
 
@@ -1308,6 +1368,9 @@ cdef class GL2DrawingContext:
 
         cdef Mesh mesh = model.mesh
 
+        if model.properties:
+            properties = self.merge_properties(properties, model.properties)
+
         if model.reverse is not IDENTITY:
              transform = transform * model.reverse
 
@@ -1328,7 +1391,7 @@ cdef class GL2DrawingContext:
 
         program = self.gl2draw.shader_cache.get(shaders)
 
-        program.start()
+        program.start(properties)
 
         program.set_uniform("u_model_size", (model.width, model.height))
         program.set_uniform("u_transform", transform)
@@ -1338,7 +1401,7 @@ cdef class GL2DrawingContext:
         if uniforms:
             program.set_uniforms(uniforms)
 
-        program.draw(mesh, properties)
+        program.draw(mesh)
         program.finish()
 
     def draw_one(self, what, Matrix transform, Polygon clip_polygon, tuple shaders, dict uniforms, dict properties):
@@ -1416,15 +1479,6 @@ cdef class GL2DrawingContext:
         if r.shaders is not None:
             shaders = shaders + r.shaders
 
-        if r.uniforms is not None:
-            uniforms = dict(uniforms)
-
-            for k, v in r.uniforms.items():
-                if (k in uniforms) and (k in renpy.config.merge_uniforms):
-                    uniforms[k] = renpy.config.merge_uniforms[k](uniforms[k], v)
-                else:
-                    uniforms[k] = v
-
         depth = properties.pop("depth", False) and not properties.get("has_depth", False)
         if depth:
             glClear(GL_DEPTH_BUFFER_BIT)
@@ -1437,6 +1491,16 @@ cdef class GL2DrawingContext:
 
         if r.cached_model is not None:
             children = [ (r.cached_model, 0, 0, False, False) ]
+
+        else:
+            if r.uniforms is not None:
+                uniforms = dict(uniforms)
+
+                for k, v in r.uniforms.items():
+                    if (k in uniforms) and (k in renpy.config.merge_uniforms):
+                        uniforms[k] = renpy.config.merge_uniforms[k](uniforms[k], v)
+                    else:
+                        uniforms[k] = v
 
         for child, cx, cy, focus, main in children:
 
@@ -1483,7 +1547,7 @@ cdef class GL2DrawingContext:
 
 
 # A set of uniforms that are defined by Ren'Py, and shouldn't be set in ATL.
-standard_uniforms = { "u_transform", "u_time", "u_random" }
+standard_uniforms = { "u_transform", "u_time", "u_random", "u_drawable_size" }
 
 _types = """
 standard_uniforms : set[str]

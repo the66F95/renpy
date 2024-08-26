@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -685,8 +685,17 @@ def frequent():
             if m.group is not None:
                 group_texture[m.group] = old_group_texture.get(m.group, None)
 
+    if fullscreen:
+
+            c = renpy.audio.audio.get_channel("movie")
+
+            if c.video_ready():
+                return True
+            else:
+                return False
+
     # Determine if we need to redraw.
-    if displayable_channels:
+    elif displayable_channels:
 
         update = True
 
@@ -711,13 +720,5 @@ def frequent():
 
         return False
 
-    elif fullscreen:
-
-        c = renpy.audio.audio.get_channel("movie")
-
-        if c.video_ready():
-            return True
-        else:
-            return False
 
     return False

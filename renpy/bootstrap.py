@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -404,7 +404,20 @@ You may be using a system install of python. Please run {0}.sh,
 
         renpy.audio.audio.quit()
 
+        for cb in renpy.config.python_exit_callbacks:
+            cb()
+
         # Prevent subprocess from throwing errors while trying to run it's
         # __del__ method during shutdown.
         if not renpy.emscripten:
             subprocess.Popen.__del__ = popen_del # type: ignore
+
+        if renpy.android:
+            from jnius import autoclass # type: ignore
+
+            import android
+            android.activity.finishAndRemoveTask()
+
+            # Avoid running Python shutdown, which can cause more harm than good. (#5280)
+            System = autoclass("java.lang.System")
+            System.exit(0)

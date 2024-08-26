@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -66,7 +66,7 @@ def compile_event(key, keydown):
 
     part = key.split("_")
 
-    MODIFIERS = { "keydown", "keyup", "repeat", "alt", "meta", "shift", "noshift", "ctrl", "osctrl", "caps", "nocaps", "num", "nonum", "any" }
+    MODIFIERS = { "keydown", "keyup", "repeat", "alt", "meta", "shift", "noshift", "ctrl", "osctrl", "caps", "nocaps", "num", "nonum", "any", "anyrepeat", "anymod" }
     modifiers = set()
 
     while part[0] in MODIFIERS:
@@ -119,31 +119,33 @@ def compile_event(key, keydown):
 
         if "repeat" in modifiers:
             rv += " and (ev.repeat)"
-        elif "any" in modifiers:
+        elif "any" in modifiers or "anyrepeat" in modifiers:
             pass
         else:
             rv += " and (not ev.repeat)"
 
-    if key not in [ "K_LALT", "K_RALT" ]:
+    if not "anymod" in modifiers:
 
-        if "alt" in modifiers or (renpy.macintosh and "osctrl" in modifiers):
-            rv += " and (ev.mod & %d)" % pygame.KMOD_ALT
-        else:
-            rv += " and not (ev.mod & %d)" % pygame.KMOD_ALT
+        if key not in [ "K_LALT", "K_RALT" ]:
 
-    if key not in [ "K_LGUI", "K_RGUI" ]:
+            if "alt" in modifiers or (renpy.macintosh and "osctrl" in modifiers):
+                rv += " and (ev.mod & %d)" % pygame.KMOD_ALT
+            else:
+                rv += " and not (ev.mod & %d)" % pygame.KMOD_ALT
 
-        if "meta" in modifiers:
-            rv += " and (ev.mod & %d)" % pygame.KMOD_META
-        else:
-            rv += " and not (ev.mod & %d)" % pygame.KMOD_META
+        if key not in [ "K_LGUI", "K_RGUI" ]:
 
-    if key not in [ "K_LCTRL", "K_RCTRL" ]:
+            if "meta" in modifiers:
+                rv += " and (ev.mod & %d)" % pygame.KMOD_META
+            else:
+                rv += " and not (ev.mod & %d)" % pygame.KMOD_META
 
-        if "ctrl" in modifiers or (not renpy.macintosh and "osctrl" in modifiers):
-            rv += " and (ev.mod & %d)" % pygame.KMOD_CTRL
-        else:
-            rv += " and not (ev.mod & %d)" % pygame.KMOD_CTRL
+        if key not in [ "K_LCTRL", "K_RCTRL" ]:
+
+            if "ctrl" in modifiers or (not renpy.macintosh and "osctrl" in modifiers):
+                rv += " and (ev.mod & %d)" % pygame.KMOD_CTRL
+            else:
+                rv += " and not (ev.mod & %d)" % pygame.KMOD_CTRL
 
     if key not in [ "K_LSHIFT", "K_RSHIFT" ]:
 
@@ -225,7 +227,7 @@ def init_keymap():
 
 def clear_keymap_cache():
     """
-    :undocumented:
+    :doc: keymap
 
     Clears the keymap cache. This allows changes to :var:`config.keymap` to
     take effect without restarting Ren'Py.
@@ -283,9 +285,13 @@ def map_event(ev, keysym):
     """
 
     if ev.type == renpy.display.core.EVENTNAME:
-        if (keysym in ev.eventnames) and not ev.up:
-            return True
-
+        if isinstance(keysym, list):
+            for k in keysym:
+                if (k in ev.eventnames) and not ev.up:
+                    return True
+        else:
+            if (keysym in ev.eventnames) and not ev.up:
+                return True
         return False
 
     if isinstance(keysym, list):
@@ -534,6 +540,10 @@ class Keymap(renpy.display.layout.Null):
         self.capture = capture
 
     def event(self, ev, x, y, st):
+
+        # This field is created by Button.
+        if getattr(ev, "_suppressed", False):
+            return
 
         for name, action in self.keymap.items():
 
@@ -1104,9 +1114,21 @@ class Button(renpy.display.layout.Window):
         # If we have a child, try passing the event to it. (For keyboard
         # events, this only happens if we're focused.)
         if (not (ev.type in KEY_EVENTS)) or self.style.key_events:
-            rv = super(Button, self).event(ev, x, y, st)
-            if rv is not None:
-                return rv
+                rv = super(Button, self).event(ev, x, y, st)
+                if rv is not None:
+                    return rv
+        else:
+
+            # Used to prevent keymaps (the key statement) from reacting to
+            # this event. This is consumed by Keymap.
+            try:
+                ev._suppressed = True
+
+                rv = super(Button, self).event(ev, x, y, st)
+                if rv is not None:
+                    return rv
+            finally:
+                ev._suppressed = False
 
         if (self.keysym is not None) and (self.clicked is not None):
             if map_event(ev, self.keysym):
@@ -1240,10 +1262,10 @@ class ImageButton(Button):
                                           **properties)
 
     def visit(self):
-        if self.imagebutton_child is None:
-            return list(self.state_children.values())
-        else:
-            return list(self.state_children.values()) + [ self.imagebutton_child ]
+        rv = list(self.state_children.values())
+        if self.imagebutton_child is not None:
+            rv.append(self.imagebutton_child)
+        return rv
 
     def get_child(self):
 
@@ -1388,6 +1410,7 @@ class Input(renpy.text.text.Text): # @UndefinedVariable
     value = None
     shown = False
     multiline = False
+    action = None
 
     st = 0
 
@@ -1408,6 +1431,7 @@ class Input(renpy.text.text.Text): # @UndefinedVariable
                  copypaste=False,
                  caret_blink=None,
                  multiline=False,
+                 action=None,
                  **properties):
 
         super(Input, self).__init__("", style=style, replaces=replaces, substitute=False, **properties)
@@ -1443,6 +1467,8 @@ class Input(renpy.text.text.Text): # @UndefinedVariable
         self.pixel_width = pixel_width
 
         self.multiline = multiline
+
+        self.action = action
 
         caretprops = { 'color' : None }
 
@@ -1629,8 +1655,21 @@ class Input(renpy.text.text.Text): # @UndefinedVariable
             if self.edit_text:
                 content = content[0:self.caret_pos] + self.edit_text + self.content[self.caret_pos:]
 
+            if self.action is not None:
+                rv = run(self.action)
+
+                if rv is not None:
+                    return rv
+                else:
+                    raise renpy.display.core.IgnoreEvent()
+
             if self.value:
-                return self.value.enter()
+                rv = self.value.enter()
+
+                if rv is not None:
+                    return rv
+                else:
+                    raise renpy.display.core.IgnoreEvent()
 
             if not self.changed:
                 return content
@@ -1848,7 +1887,18 @@ class Adjustment(renpy.object.Object):
     # The warper applied to the animation.
     animation_warper = None # type (float) -> float|None
 
-    def __init__(self, range=1, value=0, step=None, page=None, changed=None, adjustable=None, ranged=None, force_step=False): # type: (int|float|None, int|float|None, int|float|None, int|float|None, Callable|None, bool|None, Callable|None, bool) -> None
+    # This causes the interaction to restart when the adjustment hits a limit
+    # it hadn't reach before. It's intended for use by the Scroll action, which
+    # will set this to true for adjustments it may change.
+    restart_interaction_at_limit = False
+
+    # This causes the interaction to restart when the range changes.
+    restart_interaction_at_range = False
+
+    # Like changed, but called with the raw value, before it is clamped.
+    raw_changed = None
+
+    def __init__(self, range=1, value=0, step=None, page=None, changed=None, adjustable=None, ranged=None, force_step=False, raw_changed=None): # type: (int|float|None, int|float|None, int|float|None, int|float|None, Callable|None, bool|None, Callable|None, bool, Callable|None) -> None
         """
         The following parameters correspond to fields or properties on
         the adjustment object:
@@ -1887,6 +1937,12 @@ class Adjustment(renpy.object.Object):
             This function is called with the new value when the value of
             the adjustment changes.
 
+        `raw_changed`
+            This function is called when the value of the adjustment
+            changes. Unlike `changed`, this function is called with
+            the raw value, which may be out of range. It's called with
+            two arguments, the adjustment and the new value.
+
         `ranged`
             This function is called with the adjustment object when
             the range of the adjustment is set by a viewport.
@@ -1908,7 +1964,7 @@ class Adjustment(renpy.object.Object):
 
             Changes the value of the adjustment to `value`, updating
             any bars and viewports that use the adjustment.
-         """
+        """
 
         super(Adjustment, self).__init__()
 
@@ -1924,6 +1980,7 @@ class Adjustment(renpy.object.Object):
         self.adjustable = adjustable
         self.ranged = ranged
         self.force_step = force_step
+        self.raw_changed = raw_changed
 
     def viewport_replaces(self, replaces): # type: (Adjustment) -> None
         if replaces is self:
@@ -1974,6 +2031,9 @@ class Adjustment(renpy.object.Object):
         if self.ranged:
             self.ranged(self)
 
+        if self.restart_interaction_at_range:
+            renpy.exports.restart_interaction()
+
     range = property(get_range, set_range) # @ReservedAssignment
 
     def get_page(self):
@@ -2013,12 +2073,28 @@ class Adjustment(renpy.object.Object):
         if end_animation:
             self.end_animation()
 
+        if self.raw_changed:
+            rv = self.raw_changed(self, value)
+            if rv is not None:
+                return rv
+
         if value < 0:
             value = 0
         if value > self._range: # type: ignore
             value = self._range
 
         if value != self._value:
+
+            if self.restart_interaction_at_limit:
+                value_0 = value == 0
+                _value_0 = self._value == 0
+
+                value_range = value == self._range
+                _value_range = self._value == self._range
+
+                if value_0 != _value_0 or value_range != _value_range:
+                    renpy.exports.restart_interaction()
+
             self._value = value
             for d in adj_registered.setdefault(self, [ ]):
                 renpy.display.render.redraw(d, 0)
@@ -2083,6 +2159,10 @@ class Adjustment(renpy.object.Object):
 
         if st < self.animation_start:
             self.end_animation(instantly=True)
+            return 0
+
+        if not self.animation_delay:
+            self.end_animation()
             return 0
 
         done = (st - self.animation_start) / self.animation_delay

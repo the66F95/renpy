@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -90,6 +90,8 @@ init -1500 python in build:
         ( "**.old", None),
         ( "**.new", None),
         ( "**.rpa", None),
+        ( "**.rpe", None),
+        ( "**.rpe.py", None),
 
         ( "**/steam_appid.txt", None),
 
@@ -161,6 +163,9 @@ init -1500 python in build:
         ("*.dll", None),
         ("*.manifest", None),
         ("*.keystore", None),
+        ( "**.rpe", None),
+        ( "**.rpe.py", None),
+
         ("update.pem", None),
 
         ("lib/", None),

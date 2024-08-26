@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -118,7 +118,7 @@ class Drag(renpy.display.displayable.Displayable, renpy.revertable.RevertableObj
     `activated`
         A callback (or list of callbacks) that is called when the mouse
         is pressed down on the drag. It is called with one argument, a
-        a list of Drags that are being dragged. The return value of this
+        list of Drags that are being dragged. The return value of this
         callback is ignored.
 
     `dragging`
@@ -672,6 +672,7 @@ class Drag(renpy.display.displayable.Displayable, renpy.revertable.RevertableObj
             # Record when the snap started
             self.snap_start = at
             redraw(self, 0)
+            self.snapping = True
         elif self.target_at <= at or self.target_at <= self.at:
             # Snap complete
             self.x = self.target_x
@@ -681,7 +682,7 @@ class Drag(renpy.display.displayable.Displayable, renpy.revertable.RevertableObj
             if self.snapping:
                 run(self.snapped, self, self.target_x, self.target_y, True)
             self.snapping = False
-        else:
+        elif self.snapping:
             # Snap in progress
             done = (at - self.snap_start) / (self.target_at - self.snap_start)
             if self.snap_warper is not None:

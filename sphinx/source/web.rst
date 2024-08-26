@@ -36,6 +36,8 @@ Some limitations are:
   that sockets and the requests library will return errors when run inside
   the web browser.
 
+* Live2D is not supported.
+
 In addition, there are some limitations that can be caused by where you host
 your game. Some hosting providers limit the size of a game and the number
 of files that can be included as part of a project. As an example,
@@ -91,6 +93,13 @@ Open build Directory
     This opens the folder containing the files produced by the build process.
 
 
+Generated folders
+-----------------
+Say, your project is in the renpy/projects/main/yourproject folder. Then you
+will find a new renpy/projects/main/yourproject-1.0-dists folder. This folder
+contains a yourproject-1.0-web subfolder, and this subfolder's zipped version,
+a yourproject-1.0-web.zip file.
+
 Uploading your Game
 -------------------
 
@@ -103,6 +112,9 @@ If you're hosting the game yourself, you'll want to make sure your web
 server serves .wasm files using the application/wasm MIME type. Doing
 so will make the game load faster, and prevent a warning from happening.
 
+Some web hosts may reject the game.zip file. In that case, rename it to
+game.data, and edit index.html to change game.zip to game.data.
+
 .. _web-presplash:
 
 Presplash
@@ -112,11 +124,13 @@ The Web platform natively uses a default presplash image. To override it, you ca
 an image named `web-presplash`, `.jpg`, `.png` or `.webp`, and it will replace
 the default.
 
+The `.webp` format allows for an animated presplash image, if that's required.
+
 Icon
 ---------
 
 The Web page icon can be customized by putting an image file with the name `web-icon.png`
-in the base directory of your project. This image must have a minimum resolution of 
+in the base directory of your project. This image must have a minimum resolution of
 512x512 and its width and height must be equal.
 If no custom image is given, the default Ren'Py icon is used.
 
@@ -130,7 +144,7 @@ package your game for the web the first time. The default contents of this
 file is::
 
     # RenPyWeb progressive download rules - first match applies"
-    # '+' = progressive download, '-' = keep in game.zip (default)
+    # '+' = progressive download, '-' = keep in game.data (default)
     # See https://www.renpy.org/doc/html/build.html#classifying-and-ignoring-files for matching
     #
     # +/- type path

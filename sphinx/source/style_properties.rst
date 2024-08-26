@@ -223,8 +223,8 @@ the next prefix.
 The style prefix is passed through displayables that do not take user input,
 including containers, transforms, and frames.
 
-As an example of how this can be used, if the files "idle\_button.png" and
-"hover\_button.png" exist (and no other files ending in "button.png" do)::
+As an example of how this can be used, if the files :file:`idle_button.png` and
+:file:`hover_button.png` exist (and no other files ending in :file:`button.png` do)::
 
     style button:
         background "[prefix_]button.png"
@@ -478,6 +478,9 @@ Text Style Properties
     When rendering an image-based font, black will be mapped to this
     color. This has no effect for TrueType fonts.
 
+    This may be None in the case of ruby/furigana text, to use the same
+    color as the parent text.
+
 .. style-property:: bold boolean
 
     If True, render the font in a bold style. For a TrueType font,
@@ -496,6 +499,9 @@ Text Style Properties
     The color the text is rendered in. When using a TrueType font,
     the font is rendered in this color. When using an image-based
     font, white is mapped to this color.
+
+    This may be None in the case of ruby/furigana text, to use the same
+    color as the parent text.
 
 .. style-property:: emoji_font string
 
@@ -728,6 +734,12 @@ Text Style Properties
     Specifies the number of pixels the second and later lines in a
     paragraph are indented by.
 
+.. style-property:: ruby_line_leading int
+
+    The number of pixels of spacing to include above each line that
+    contains :ref:`ruby text <ruby-text>`. This is in addition to
+    :propref:`line_leading`.
+
 .. style-property:: ruby_style style or None
 
     If not None, this should be a style object. The style that's used for
@@ -787,6 +799,21 @@ Text Style Properties
 .. style-property:: vertical boolean
 
     If True, the text will be rendered vertically.
+
+    There are multiple caveats:
+
+    * If :propref:`shaper` is "freetype", vertical layout will likely be incorrect.
+
+    * Harfbuzz will convert horizontal forms to vertical forms if those
+      forms are present in the font.
+
+    * Characters will be laid out top to bottom, right to left, but will
+      not be rotated. This means that horizontal characters will be laid
+      out one on top of another.
+
+    * If vertical text information is not present in the font, it will be
+      synthesized, but may be incorrect. Generally, ideographic text works
+      better than non-ideographic text.
 
 .. _window-style-properties:
 
@@ -923,7 +950,18 @@ Button Style Properties
    If True, the default, this button can be focused using the keyboard focus
    mechanism, if it can be focused at all. If False, the keyboard focus
    mechanism will skip this button. (The keyboard focus mechanism is used
-   by keyboards and keyboard-like devices, such as joypads.)
+   by keyboards and keyboard-like devices, such as gamepads.)
+
+.. style-property:: keyboard_focus_insets (int, int, int, int) or None
+
+    If not None, this should be a tuple of four integers, giving the
+    number of pixels that are used to shrink the left, top, right, and
+    bottom sides of the focus rectangle, when it's used for keyboard
+    focus.
+
+    This can be useful when buttons overlap. The keyboard focus algorithm
+    doesn't work with overlapping buttons, and so this can be used to to
+    shrink the size of the buttons internally, allowing focus to work.
 
 .. style-property:: key_events boolean
 
@@ -1086,12 +1124,35 @@ These are used for the horizontal and vertical box layouts.
     or columns. (So it is the vertical spacing between lines in a wrapped
     hbox, and the horizontal spacing between columns in a wrapped vbox.)
 
+.. style-property:: box_align float or None
+
+    This determines the alignment of rows or columns in a box. If 0.0,
+    the default, rows are left-aligned and columns are top-aligned. If 0.5,
+    it will center wrapped rows.
+
+    When this is not None, addional space will not be offered to the child when
+    :propref:`xfill` or :propref:`yfill` is set, ignoring the child's position
+    in the box's primary direction.
+
 .. style-property:: order_reverse boolean
 
     If False, the default, the items in the box will be drawn first-to-last,
     with the first item in the box being below the second, and so on. If True,
     this order will be reversed, and the first item in the box will be above
     all other items in the box.
+
+.. style-property:: box_justify boolean or "first" or "all"
+
+    If not False, the contents of the box will be justified - that is, the items
+    inside the box will have the spacing between them adjusted so they evenly
+    span the size of the box. True will cause all lines but the final line to be
+    justified. "first" will cause only the first line to be justified. "all"
+    will cause all lines to be justified, including the final line. Justified
+    lines do not obey box_align, except when there is only one item in a line.
+
+    When this is not false, addional space will not be offered to the child when
+    :propref:`xfill` or :propref:`yfill` is set, ignoring the child's position
+    in the box's primary direction.
 
 
 .. _grid-style-properties:

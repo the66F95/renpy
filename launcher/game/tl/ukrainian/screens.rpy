@@ -1,4 +1,4 @@
-﻿
+
 translate ukrainian strings:
 
     # gui/game/screens.rpy:9
@@ -27,7 +27,7 @@ translate ukrainian strings:
 
     # gui/game/screens.rpy:114
     old "## If there's a side image, display it above the text. Do not display on the phone variant - there's no room."
-    new "Якщо є бічне зображення, показуйте його над текстом. Не виводьте на мобільний варіант — немає місця."
+    new "## Якщо є бічне зображення, показуйте його над текстом. Не виводьте на мобільний варіант — немає місця."
 
     # gui/game/screens.rpy:120
     old "## Make the namebox available for styling through the Character object."
@@ -514,8 +514,8 @@ translate ukrainian strings:
     new "ПКМ"
 
     # gui/game/screens.rpy:1054
-    old "Mouse Wheel Up\nClick Rollback Side"
-    new "Коліщатко миші вгору\nСторона відкату"
+    old "Mouse Wheel Up"
+    new "Коліщатко миші вгору"
 
     # gui/game/screens.rpy:1058
     old "Mouse Wheel Down"
@@ -548,6 +548,10 @@ translate ukrainian strings:
     # gui/game/screens.rpy:1089
     old "Calibrate"
     new "Відкалібрувати"
+
+    # gui/game/screens.rpy:1098
+    old "Start, Guide, B/Right Button"
+    new "Кнопка Start, Guide, B/Управо"
 
     # gui/game/screens.rpy:1117
     old "## Additional screens"
@@ -652,7 +656,6 @@ translate ukrainian strings:
     # gui/game/screens.rpy:1424
     old "Menu"
     new "Меню"
-
 
 translate ukrainian strings:
 

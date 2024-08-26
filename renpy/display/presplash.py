@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -127,6 +127,9 @@ def start(basedir, gamedir):
     else:
         shape = None
 
+    if isinstance(shape, ProgressBar):
+        shape = shape.background
+
     window = pygame_sdl2.display.Window(
         sys.argv[0],
         (sw, sh),
@@ -240,7 +243,7 @@ def progress(kind, done, total):
     if not renpy.emscripten:
         return
 
-    if done:
+    if done == total:
         return
 
     if not PY2:

@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -59,6 +59,7 @@ init python:
     if RENIOS_PATH:
         import renios.create
         import renios.image
+        import renios.interface
 
     def IOSState():
         if not RENIOS_PATH:
@@ -135,7 +136,7 @@ init python:
         if gui:
             iface = MobileInterface("ios")
         else:
-            iface = rapt.interface.Interface()
+            iface = renios.interface.Interface()
 
         if os.path.exists(dest):
             if not iface.yesno(_("The Xcode project already exists. Would you like to rename the old project, and replace it with a new one?")):

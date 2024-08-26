@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -108,6 +108,9 @@ def run(restart):
         # to not call quit label since it's not nessesary.
         raise renpy.game.QuitException()
 
+    # Clear obsolete image manipulators.
+    renpy.display.im.ImageBase.obsolete_list = [ ]
+
     if renpy.config.clear_lines:
         renpy.scriptedit.lines.clear()
 
@@ -154,6 +157,15 @@ def load_rpe(fn):
         sys.path.remove(fn)
     sys.path.insert(0, fn)
     exec(autorun, {'__file__': os.path.join(fn, "autorun.py")})
+
+
+def load_rpe_py(fn):
+
+    with open(fn) as f:
+        autorun = f.read()
+
+    exec(autorun, {'__file__': fn})
+
 
 def choose_variants():
 
@@ -301,43 +313,6 @@ def choose_variants():
         renpy.config.variants.insert(0, 'large') # type: ignore
 
 
-def android_searchpath():
-    """
-    Determines the searchpath on Android.
-    """
-
-    # The default gamedir, in private.
-    renpy.config.searchpath = [ renpy.config.gamedir ]
-
-    # The public android directory.
-    if "ANDROID_PUBLIC" in os.environ:
-        android_game = os.path.join(os.environ["ANDROID_PUBLIC"], "game")
-
-        if os.path.exists(android_game):
-            renpy.config.searchpath.insert(0, android_game)
-
-    # Asset packs.
-    packs = [
-        "ANDROID_PACK_FF1",
-        "ANDROID_PACK_FF2",
-        "ANDROID_PACK_FF3",
-        "ANDROID_PACK_FF4",
-    ]
-
-    for i in packs:
-        if i not in os.environ:
-            continue
-
-        assets = os.environ[i]
-
-        for i in [ "renpy/common", "game" ]:
-            dn = os.path.join(assets, i)
-            if os.path.isdir(dn):
-                renpy.config.searchpath.append(dn)
-
-    print("Android search paths:" , " ".join(renpy.config.searchpath))
-
-
 def load_build_info():
     """
     Loads cache/build_info.json, and uses it to initialize the
@@ -384,31 +359,21 @@ def main():
 
     # Note the game directory.
     game.basepath = renpy.config.gamedir
-    renpy.config.searchpath = [ renpy.config.gamedir ]
-
-    # Find the common directory.
-    commondir = renpy.__main__.path_to_common(renpy.config.renpy_base) # E1101 @UndefinedVariable
-
-    if os.path.isdir(commondir):
-        renpy.config.searchpath.append(commondir)
-        renpy.config.commondir = commondir
-    else:
-        renpy.config.commondir = None
-
-    # Add path from env variable, if any
-    if "RENPY_SEARCHPATH" in os.environ:
-        renpy.config.searchpath.extend(os.environ["RENPY_SEARCHPATH"].split("::"))
-
-    if renpy.android:
-        renpy.config.commondir = None
-
-        android_searchpath()
+    renpy.config.commondir = renpy.__main__.path_to_common(renpy.config.renpy_base) # E1101 @UndefinedVariable
+    renpy.config.searchpath = renpy.__main__.predefined_searchpath(renpy.config.commondir) # E1101 @UndefinedVariable
 
     # Load Ren'Py extensions.
-    for dir in renpy.config.searchpath: # @ReservedAssignment
+    for dir in [ renpy.config.renpy_base ] + renpy.config.searchpath: # @ReservedAssignment
+
+        if not os.path.isdir(dir):
+            continue
+
         for fn in sorted(os.listdir(dir)):
             if fn.lower().endswith(".rpe"):
                 load_rpe(dir + "/" + fn)
+
+            if fn.lower().endswith(".rpe.py"):
+                load_rpe_py(dir + "/" + fn)
 
     # Generate a list of extensions for each archive handler.
     archive_extensions = [ ]
@@ -595,6 +560,8 @@ def main():
         # Run the post init code, if any.
         for i in renpy.game.post_init:
             i()
+
+        renpy.config.post_init()
 
         renpy.game.script.report_duplicate_labels()
 

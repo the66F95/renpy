@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -706,7 +706,7 @@ class Script(object):
                 if not dir:
                     raise Exception("Cannot load rpy/rpym/ren.py file %s from inside an archive." % fn)
 
-                base, _, game = dir.rpartition("/")
+                base, _, game = dir.replace("\\", "/").rpartition("/")
                 olddir = base + "/old-" + game
 
                 fullfn = dir + "/" + fn

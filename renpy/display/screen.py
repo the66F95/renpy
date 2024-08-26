@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -403,7 +403,7 @@ class ScreenDisplayable(renpy.display.layout.Container):
         self.cache = { }
 
         if tag and layer:
-            old_screen = get_screen(tag, layer)
+            old_screen = get_screen(tag, layer, tag_only=True)
         else:
             old_screen = None
 
@@ -535,6 +535,9 @@ class ScreenDisplayable(renpy.display.layout.Container):
         return self.child._handles_event(event)
 
     def _hide(self, st, at, kind):
+
+        if kind == "cancel" and renpy.config.screens_never_cancel_hide:
+            return self
 
         if self.phase == HIDE:
             hid = self
@@ -1092,7 +1095,7 @@ def get_screen_layer(name):
         return screen.layer
 
 
-def get_screen(name, layer=None):
+def get_screen(name, layer=None, tag_only=False):
     """
     :doc: screens
 
@@ -1102,6 +1105,9 @@ def get_screen(name, layer=None):
 
     This can also take a list of names, in which case the first screen
     that is showing is returned.
+
+    `tag_only`
+        If true, only the tag is considered.
 
     This function can be used to check whether a screen is showing::
 
@@ -1146,11 +1152,13 @@ def get_screen(name, layer=None):
         if sd is not None:
             return sd
 
-    for tag in name:
+    if not tag_only:
 
-        sd = sl.get_displayable_by_name(layer, (tag,))
-        if sd is not None:
-            return sd
+        for tag in name:
+
+            sd = sl.get_displayable_by_name(layer, (tag,))
+            if sd is not None:
+                return sd
 
     return None
 
@@ -1183,10 +1191,10 @@ def get_screen_variable(name, screen=None, layer=None):
     else:
         s = get_screen(screen, layer)
         if s is None:
-            raise ValueError("Screen %s is not showing." % (name,))
+            raise ValueError("Screen %s is not showing." % (screen,))
 
     if name not in s.scope:
-        raise NameError("Screen %s does not have a variable named %s." % (screen.name, name))
+        raise NameError("Screen %s does not have a variable named %s." % (s.name, name))
 
     return s.scope[name]
 
@@ -1224,7 +1232,7 @@ def set_screen_variable(name, value, screen=None, layer=None):
     else:
         s = get_screen(screen, layer)
         if s is None:
-            raise ValueError("Screen %s is not showing." % (name,))
+            raise ValueError("Screen %s is not showing." % (screen,))
 
     s.scope[name] = value
 
@@ -1337,7 +1345,7 @@ def show_screen(_screen_name, *_args, **kwargs):
     if _zorder is None:
         _zorder = d.zorder
 
-    old_d = get_screen(_tag, _layer)
+    old_d = get_screen(_tag, _layer, tag_only=True)
 
     if old_d and old_d.cache:
         d.cache = old_d.cache
@@ -1349,8 +1357,10 @@ def show_screen(_screen_name, *_args, **kwargs):
 
     sls = renpy.display.scenelists.scene_lists()
 
+
     sls.add(_layer, d, _tag, zorder=_zorder, transient=_transient, keep_st=True, name=name)
-    sls.shown.predict_show(_layer, (_tag,), True)
+    if not _transient:
+        sls.shown.predict_show(_layer, name, True)
 
 
 def predict_screen(_screen_name, *_args, **kwargs):
@@ -1425,13 +1435,15 @@ def predict_screen(_screen_name, *_args, **kwargs):
     renpy.ui.reset()
 
 
-def hide_screen(tag, layer=None):
+def hide_screen(tag, layer=None, immediately=False):
     """
     :doc: screens
 
     The programmatic equivalent of the hide screen statement.
 
     Hides the screen with `tag` on `layer`.
+
+    If `immediately` is true, the screen is hidden immediately, without the 'on hide' event.
     """
 
     if layer is None:
@@ -1439,11 +1451,10 @@ def hide_screen(tag, layer=None):
 
     screen = get_screen(tag, layer)
 
-
     sls = renpy.display.scenelists.scene_lists()
 
     if screen is not None:
-        sls.remove(layer, screen.tag)
+        sls.remove(layer, screen.tag, prefix="hide" if not immediately else None)
         sls.shown.predict_hide(layer, screen.screen_name)
 
 

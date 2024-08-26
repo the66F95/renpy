@@ -15,16 +15,138 @@ such changes only take effect when the GUI is regenerated.
 Pending Deprecations
 --------------------
 
-These are changes that will take effect in a future version of Ren'Py.
+Ren'Py 7.8 is the last release to support Python 2.
 
-Support for Python 2 and Ren'Py 7 will be dropped 1 year after Ren'Py 8.1 is
-released, in May 2024.
+Ren'Py 8.4 will drop support for the original OpenGL renderer (gl1), and for Windows 7, 8, and 8.1.
 
-The original OpenGL renderer will be removed 1 year after Ren'Py 8.1 is
-released, in May 2024. If your game sets config.gl2 to False, you should
-set it to True, and make sure your game runs well. If it doesn't, please
-report any issues. When reporting issues, please determine the hardware
-(device and GPU), os and driver versions, and year of manufacture.
+
+.. _incompatible-8.3.0:
+.. _incompatible-7.8.0:
+
+8.3.0 / 7.8.0
+-------------
+
+**Box_reverse and Box_align** The :propref:`box_reverse` property now no longer adjusts the box
+alignment. To adjust the box alignment, set the :propref:`box_align` property to 1.0, or use:
+
+    define config.box_reverse_align = true
+
+To get the 8.2 behavior.
+
+**Retained speech bubbles** are now automatically cleared away when other say, menu, or call screen
+statements are invoked. This is controlled by the :var:`bubble.clear_retain_statements` variable.
+
+To disable this, add to your game::
+
+    define bubble.clear_retain_statements = [ ]
+
+**How ATL sets the child from parameters** The rules as for how and when ATL
+transforms get their child set, based upon the parameters they accept and the
+arguments they are passed, has slightly changed. It is unlikely to have any
+impact on existing games, especially if you were only using documented features.
+
+- The `old_widget` parameter taking a value from a positional argument does not
+  set the child anymore. That was an undocumented misuse of
+  :ref:`atl-transitions`. ::
+
+    transform t(old_widget):
+        ...
+
+    t("eileen") # will no longer have a child set to the "eileen" image
+
+- A `child` keyword argument being passed to a transform having a `child`
+  parameter now sets the child, just as it would in a transform with no
+  `child` parameter, or if the `child` parameter got a value from a positional
+  argument. The documentation was ambiguous about this. ::
+
+    transform t1(child):
+        ...
+
+    transform t2(delay=1.0):
+        ...
+
+    t1(child="eileen happy") # will now have a child set to the "eileen happy" image, but previously didn't.
+    t2(child="eileen happy") # the child is set, as before.
+    t1("eileen happy")       # the child is set, as before.
+
+**Character Callbacks** have been changed to take a large number of additional arguments,
+as documented at :doc:`character_callbacks`. This should not require changes as character
+callbacks should have been written to ignore unknown keyword arguments, but if not
+the character callbacks may need to be updated.
+
+**Window Statement** The ``window show`` annd ``window hide`` statements
+no longer disable the ``window auto`` flag. If you'd like to do this, then
+either use the new ``window auto False`` statement, or change your game
+to include::
+
+    define config.window_functions_set_auto = True
+
+When a ``window show`` occurs after ``window hide``, Ren'Py will look forward
+to the next say statement to determine the type of thr window to show. Previously,
+it looked back to the last say statement. To revert this change, include::
+
+    define config.window_next = False
+
+.. _munge-8.3.0:
+
+**String Munging** Munging of names beginning with __ but not containing a second instance of __
+will now occur inside a string just like it does in the rest of a script. What this means is that:
+
+    $ __foo = 1
+    "Add one and __foo and you get [1 + __foo]."
+
+will be rewritten to:
+
+    $ _m1_script__foo = 1
+    "Add one and _m1_script__foo and you get [1 + _m1_script__foo]."
+
+To disable this, in a file named 01nomunge.rpy in your game directory, write::
+
+    define config.munge_in_strings = False
+
+**Cropping Outside the Bounds of a Displayable** The behavior of cropping a
+displayable with a box larger than the displayable has changed. As of this
+release, values passed to :func:`Crop`, :tpref:`crop`, :tpref:`corner1` and
+:tpref:`corner2` are not bound by the original boundaries of the displayable.
+
+In 8.2.x and 7.7.x releases of Ren'Py, the behavior was to crop the right/bottom of the displayable,
+but unconstrain the left/top. This behavior can be restored by adding to your game::
+
+    define config.limit_transform_crop = True
+
+Before 8.2 and 7.7, the behavior was to crop the right/bottom of the displayable if the value was a
+float, and leave left/top unconstrained. This behavior can be restored by adding to your game::
+
+    define config.limit_transform_crop = "only_float"
+
+
+
+.. _incompatible-8.2.2:
+.. _incompatible-7.7.2:
+
+8.2.2 / 7.7.2
+-------------
+
+**Fill and Frames** In certain cases in 8.2.1 and earlier, the :propref:`xfill` and :propref:`yfill`
+style properties could cause Frames, Windows, and Buttons to shrink in size. Now, only expansion in
+size is allowed. To revert this, add::
+
+
+    define config.fill_shrinks_frame = True
+
+
+.. _incompatible-8.2.1:
+.. _incompatible-7.7.1:
+
+8.2.1 / 7.7.1
+--------------
+
+***Vertical Text** Vertical text had been improved in the harfbuzz shaper,
+with the text now being rendered in the correct place. This may cause
+position changes, but since the previous version was wildly incorrect,
+no compatibility define is provided.
+
+
 
 
 .. _incompatible-8.2.0:
@@ -46,7 +168,6 @@ you can add the following line at the top of your files::
 
     rpy python annotations
 
-
 **Text Changes** Ren'Py uses harfbuzz for shaping, which may produce
 different glyphs than would have been produced differently, and may change
 the spacing of text. The positioning of vertical text has also been
@@ -63,6 +184,25 @@ add::
     style default:
         emoji_font None
 
+**Interpolation Changes** Interpolations in strings are now treated as Python
+expressions, this results in mostly equivelent behaviour when interpreting
+fields except when item getters are in use. For example::
+
+    # Previously
+    e "[player[money]]" #=> player['money']
+    # But now
+    e "[player[money]]" #=> player[money]
+
+To revert this behaviour, add the following to your game::
+
+    define config.interpolate_exprs = False
+
+To help other developers work while you're migrating your game to the new
+behavior, there is a fallback mode that will first try the new behavior, and
+then fall back to the old behavior if the new behavior fails. To enable this,
+add the following to your game::
+
+    define config.interpolate_exprs = "fallback"
 
 **Polar Coordinate Changes** Ren'Py now enforces that the angles given to
 the :tpref:`angle` and :tpref:`anchorangle`
@@ -107,7 +247,6 @@ add to your game::
 
     define config.simple_box_reverse = True
 
-
 **build.itch_channels** That variable was always documented as a dict but was
 mistakenly implemented as a list of tuples. It's now truly a dict. If you
 were using list operations on it, you'll need to change your code::
@@ -139,6 +278,45 @@ adds it above the other displayables in the group, rather than below them.
 To change this, add to your game::
 
     define config.drag_group_add_top = False
+
+**Translate Statements and config.statement_callbacks** Translate statements
+(including internal statements that Ren'Py automatically generates) will no
+longer cause :var:`config.statement_callbacks` to be called.
+
+**Transitions Use Child Placements** If the child of a transitions provides
+placement information, that will be used by the transition itself. This
+only makes sense when the transition is used by an ATL transition, and both
+the old and new children provide the same placement information.
+
+To disable this, add to your game::
+
+    define config.transitions_use_child_placement = False
+
+**Containers Pass Transform Events**
+Containers (including fixed, hbox, vbox, side, grid, viewport, and vpgrid) now
+pass some transform events (hover, idle, insensitive, selected_hover, and selected_idle)
+to their children, meaning that children of a button can have their own transforms to respond to those
+events.
+
+To disable this, add to your game::
+
+    define config.containers_pass_transform_events = set()
+
+**Say Screens Are Supplied the Replace Event.** Say screens are now supplied
+the "replace" (rather than "show") transform event for the second and subsequent pauses.
+
+To disable this, add to your game::
+
+    define config.say_replace_event = False
+
+**Re-showing A Screen No Longer Cancels a Hide Event** Previously, if a screen
+was hidden and re-shown, a hide or replace transform event associated with the same
+screen would be cancelled, and the hiding or replaced screen would instantly
+disappear. Now, the event will be allowed to run to completion.
+
+To disable this, add to your game::
+
+    define config.screens_never_cancel_hide = False
 
 
 .. _incompatible-8.1.1:
@@ -178,6 +356,28 @@ Then rebuild and re-upload your bundle.
 
 8.1.0 / 7.6.0
 -------------
+
+**Conflicting properties** The former default input screen, which may have found
+its way into your game, contains conflicting style properties. The fix for that
+is as follows:
+
+.. code-block:: diff
+
+    +define config.check_conflicting_properties = True
+
+     screen input(prompt):
+         style_prefix "input"
+         window:
+
+             vbox:
+    -            xalign gui.dialogue_text_xalign
+    +            xanchor gui.dialogue_text_xalign
+                 xpos gui.dialogue_xpos
+                 xsize gui.dialogue_width
+                 ypos gui.dialogue_ypos
+                 text prompt style "input_prompt"
+                 input id "input"
+
 
 **Speech Bubbles** Adding bubble support to an existing game requires
 adding files and script to the game. The :doc:`bubble` documentation

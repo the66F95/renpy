@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -153,9 +153,13 @@ class Update(object):
         Called to initialize the update.
         """
 
-        os.makedirs(self.updatedir, exist_ok=True)
-        os.makedirs(self.blockdir, exist_ok=True)
-        os.makedirs(self.deleteddir, exist_ok=True)
+        def makedirs(dir):
+            if not os.path.isdir(dir):
+                os.makedirs(dir)
+
+        makedirs(self.updatedir)
+        makedirs(self.blockdir)
+        makedirs(self.deleteddir)
 
         print("-" * 80, file=self.logfile)
         print("Starting update at %s." % time.ctime(), file=self.logfile)

@@ -1,4 +1,4 @@
-# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -234,13 +234,18 @@ def image_exists_imprecise(name):
         if [ i for i in banned if i in attrs ]:
             continue
 
-        li = getattr(d, "_list_attributes", None)
+        try:
 
-        if li is not None:
-            attrs = attrs | set(li(im[0], required))
+            li = getattr(d, "_list_attributes", None)
 
-        if [ i for i in required if i not in attrs ]:
-            continue
+            if li is not None:
+                attrs = attrs | set(li(im[0], required))
+
+            if [ i for i in required if i not in attrs ]:
+                continue
+
+        except Exception:
+            pass
 
         imprecise_cache.add(name)
         return True
@@ -452,8 +457,8 @@ def check_user(node):
 
     try:
         node.get_next()
-    except Exception:
-        report("Didn't properly report what the next statement should be.")
+    except Exception as e:
+        report("Didn't properly report what the next statement should be : {!r}".format(e))
 
 
 def quote_text(s):
@@ -709,6 +714,10 @@ def check_style(name, s):
                 if isinstance(v, renpy.text.font.FontGroup):
                     for f in set(v.map.values()):
                         check_file(name, f, directory="fonts")
+                elif v is None and k.endswith("emoji_font"):
+                    pass
+                elif v in renpy.config.font_name_map.keys():
+                    check_file(name, renpy.config.font_name_map[v], directory="fonts")
                 else:
                     check_file(name, v, directory="fonts")
 
@@ -873,7 +882,7 @@ def report_character_stats(charastats):
     Returns a list of character stat lines.
     """
 
-    rv = [ "", "Character Statistics (for default language):", ]
+    rv = [ "", "Character Statistics (for default language):", ] # type: list[str|list[str]]
 
     bullets = [ ]
 
@@ -889,6 +898,18 @@ def report_character_stats(charastats):
     rv.append(bullets)
 
     return rv
+
+
+def check_image_manipulators():
+
+    problems = [ ]
+
+    for filename, linenumber, classname in renpy.display.im.ImageBase.obsolete_list:
+        problems.append((filename, linenumber, "im.%s" % classname))
+
+    if problems:
+        problem_listing("Obsolete Image Manipulators:", problems)
+
 
 def check_unreachables(all_nodes):
 
@@ -940,6 +961,10 @@ def check_unreachables(all_nodes):
             if node.language is not None:
                 to_check.add(node)
 
+        elif isinstance(node, renpy.ast.TranslateSay):
+            if node.language is not None:
+                to_check.add(node)
+
         elif isinstance(node, (renpy.ast.Init, renpy.ast.TranslateBlock)):
             # the block of these ones is always reachable, but their next is reachable only if they are themselves reachable
             add_block(node.block)
@@ -960,6 +985,9 @@ def check_unreachables(all_nodes):
                 weakly_reachable.add(node)
 
             add_names(reach)
+
+        elif isinstance(node, renpy.ast.RPY):
+            weakly_reachable.add(node)
 
     while to_check:
         node = to_check.pop() # type: Any
@@ -1003,16 +1031,8 @@ def check_unreachables(all_nodes):
 
 def check_orphan_translations(none_lang_identifiers, translation_identifiers):
 
-    def header():
-        print("")
-        print("")
-        print("Orphan Translations:")
-        print()
-
-
     problems = [ ]
 
-    faulty = collections.defaultdict(list) # filename : [linenumbers]
     for id, nodes in translation_identifiers.items():
         if id not in none_lang_identifiers:
             for node in nodes:
@@ -1039,7 +1059,7 @@ def check_python_warnings():
 
     warnings.sort()
 
-    for filename, line, text in warnings:
+    for _filename, _line, text in warnings:
         print("\n" + text, end='')
 
 
@@ -1138,8 +1158,13 @@ def lint():
         elif isinstance(node, renpy.ast.Say):
             check_say(node)
 
-            counts[language].add(node.what)
-            if language is None:
+            if isinstance(node, renpy.ast.TranslateSay):
+                node_language = node.language
+            else:
+                node_language = language
+
+            counts[node_language].add(node.what)
+            if node_language is None:
                 charastats[node.who or 'narrator'].add(node.what)
 
         elif isinstance(node, renpy.ast.Menu):
@@ -1164,13 +1189,6 @@ def lint():
         elif isinstance(node, renpy.ast.Label):
             check_label(node)
 
-        elif isinstance(node, renpy.ast.Translate) and args.orphan_tl:
-            language = node.language
-            if language is None:
-                none_language_ids.add(node.identifier)
-            else:
-                translated_ids[node.identifier].append(node)
-
         elif isinstance(node, renpy.ast.EndTranslate):
             language = None
 
@@ -1192,9 +1210,19 @@ def lint():
         elif isinstance(node, renpy.ast.Transform):
             check_transform(node)
 
+        # This has to be separate, as TranslateSay is a subclass of Say.
+        if isinstance(node, (renpy.ast.Translate, renpy.ast.TranslateSay)) and args.orphan_tl:
+            language = node.language
+            if language is None:
+                none_language_ids.add(node.identifier)
+            else:
+                translated_ids[node.identifier].append(node)
+
     report_node = None
 
     check_styles()
+    check_image_manipulators()
+
     check_filename_encodings()
 
     check_unreachables(all_stmts)
@@ -1203,6 +1231,9 @@ def lint():
         check_orphan_translations(none_language_ids, translated_ids)
 
     check_python_warnings()
+
+    if not renpy.config.check_conflicting_properties:
+        print("It is advised to set config.check_conflicting_properties to True.")
 
     for f in renpy.config.lint_hooks:
         f()

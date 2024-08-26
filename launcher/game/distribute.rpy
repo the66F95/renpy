@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -61,7 +61,9 @@ init python in distribute:
             minor=sys.version_info.minor,
         )
 
-    # Going from 7.4 to 7.5 or 8.0, the library directory changed.
+    # * Going from 7.4 to 7.5 or 8.0, the library directory changed.
+    # * 7.7 called os.makedirs with exist_ok=True, even on Python 2.
+    # * 8.2 wouldn't save the DLC state.
     RENPY_PATCH = py("""\
 def change_renpy_executable():
     import sys, os, renpy, site
@@ -70,6 +72,35 @@ def change_renpy_executable():
         sys.renpy_executable = os.path.join(renpy.config.renpy_base, "lib", "py{major}-" + site.RENPY_PLATFORM, os.path.basename(sys.renpy_executable))
 
 change_renpy_executable()
+
+if sys.version_info.major == 2:
+    os.old_makedirs = getattr(os, "old_makedirs", os.makedirs)
+
+    def makedirs(name, mode=0o777, exist_ok=False):
+        if exist_ok and os.path.exists(name):
+            return
+
+        os.old_makedirs(name, mode)
+
+    os.makedirs = makedirs
+
+def fix_dlc(name, fn):
+    import sys, os
+
+    if not os.path.exists(os.path.join(config.renpy_base, fn)):
+        return
+
+    u = sys._getframe(2).f_locals["self"]
+    if name in u.current_state:
+        return
+
+    u.add_dlc_state(name)
+
+fix_dlc("steam", "lib/py3-linux-x86_64/libsteam_api.so")
+fix_dlc("steam", "lib/py2-linux-x86_64/libsteam_api.so")
+fix_dlc("web", "web")
+fix_dlc("rapt", "rapt")
+fix_dlc("renios", "renios")
 """)
 
     match_cache = { }
@@ -489,10 +520,6 @@ change_renpy_executable()
             # A map from a package to a unique update version hash.
             self.update_versions = { }
 
-            # Map from destination file with extension to (that file's hash,
-            # hash of the file list)
-            self.build_cache = { }
-
             # A map from file to its hash.
             self.hash_cache = { }
 
@@ -579,8 +606,6 @@ change_renpy_executable()
                     os.makedirs(self.destination)
                 except Exception:
                     pass
-
-                self.load_build_cache()
 
             self.packagedest = packagedest
 
@@ -698,9 +723,6 @@ change_renpy_executable()
 
             if self.build_update:
                 self.finish_updates(build_packages)
-
-            if not packagedest:
-                self.save_build_cache()
 
             # Finish up.
             self.log.close()
@@ -1537,20 +1559,6 @@ change_renpy_executable()
                 full_filename = "rpu/" + variant + ".files.rpu"
                 path = self.destination + "/" + full_filename
 
-            if self.build['renpy']:
-                fl_hash = fl.hash(self)
-            else:
-                fl_hash = '<not building renpy>'
-
-            file_hash, old_fl_hash = self.build_cache.get(full_filename, ("", ""))
-
-            if (not directory) and (old_fl_hash == fl_hash) and not(self.build['renpy'] and (variant == "sdk")):
-
-                if file_hash:
-                    self.build_cache[full_filename] = (file_hash, fl_hash)
-
-                return
-
             def done():
                 """
                 This is called when the build of the package is done, either
@@ -1565,9 +1573,6 @@ change_renpy_executable()
                     file_hash = hash_file(path)
                 else:
                     file_hash = ""
-
-                if file_hash:
-                    self.build_cache[full_filename] = (file_hash, fl_hash)
 
             if format == "tar.bz2" or format == "bare-tar.bz2":
                 pkg = TarPackage(path, "w:bz2")
@@ -1648,7 +1653,7 @@ change_renpy_executable()
 
                 if "zsync" in self.build["update_formats"]:
 
-                    digest = self.build_cache[self.base_name + "-" + variant + ".update"][0]
+                    digest = hash_file(self.destination + "/" + self.base_name + "-" + variant + ".update")
                     sums_size = os.path.getsize(self.destination + "/" + self.base_name + "-" + variant + ".sums")
 
                     index[variant].update({
@@ -1666,7 +1671,7 @@ change_renpy_executable()
 
                 if "rpu" in self.build["update_formats"]:
                     index[variant]["rpu_url"] = "rpu/" + variant + ".files.rpu"
-                    index[variant]["rpu_digest"] = self.build_cache["rpu/" + variant + ".files.rpu"][0]
+                    index[variant]["rpu_digest"] = hash_file(self.destination + "/rpu/" + variant + ".files.rpu")
 
             for p in packages:
                 if p["update"]:
@@ -1674,8 +1679,11 @@ change_renpy_executable()
 
             update_data = json.dumps(index, indent=2)
 
+            if not isinstance(update_data, bytes):
+                update_data = update_data.encode("utf-8")
+
             fn = renpy.fsencode(os.path.join(self.destination, "updates.json"))
-            with open(fn, "wb" if PY2 else "w") as f:
+            with open(fn, "wb") as f:
                 f.write(update_data)
 
             # Write the signed file.
@@ -1686,7 +1694,7 @@ change_renpy_executable()
 
             fn = renpy.fsencode(os.path.join(self.destination, "updates.ecdsa"))
             with open(fn, "wb") as f:
-                f.write(signing_key.sign(update_data.encode("utf-8")))
+                f.write(signing_key.sign(update_data))
 
         def find_update_pem(self):
             if self.build['renpy']:
@@ -1703,38 +1711,6 @@ change_renpy_executable()
             key_pem = self.temp_filename("key.pem")
             with open(key_pem, "wb") as f:
                 f.write(signing_key.verifying_key.to_pem())
-
-        def save_build_cache(self):
-            if not self.build['renpy']:
-                return
-
-            fn = renpy.fsencode(os.path.join(self.destination, ".build_cache"))
-
-            with open(fn, "w", encoding="utf-8") as f:
-                for k, v in self.build_cache.items():
-                    l = "\t".join([k, v[0], v[1]]) + "\n"
-                    f.write(l)
-
-        def load_build_cache(self):
-            if not self.build['renpy']:
-                return
-
-            fn = renpy.fsencode(os.path.join(self.destination, ".build_cache"))
-
-            if not os.path.exists(fn):
-                return
-
-            with open(fn, "rb") as f:
-                for l in f:
-                    if not l:
-                        continue
-
-                    l = l.decode("utf-8").rstrip()
-                    l = l.split("\t")
-
-                    self.build_cache[l[0]] = (l[1], l[2])
-
-            os.unlink(fn)
 
         def dump(self):
             for k, v in sorted(self.file_lists.items()):

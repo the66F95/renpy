@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2023 Tom Rothamel <pytom@bishoujo.us>
+﻿# Copyright 2004-2024 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -27,7 +27,7 @@ init python:
 
     PUBLIC_KEY = "renpy_public.pem"
 
-    CHANNELS_URL = "https://www.renpy.org/channels.json"
+    CHANNELS_URL = os.environ.get("RENPY_CHANNELS_URL", "https://www.renpy.org/channels.json")
 
     version_tuple = renpy.version(tuple=True)
 
@@ -220,11 +220,13 @@ init python:
 
         import requests
 
+        url = CHANNELS_URL + "?version=" + ".".join(str(i) for i in version_tuple)
+
         if not quiet:
             with interface.error_handling(_("downloading the list of update channels")):
-                channels = requests.get(CHANNELS_URL).json()["releases"]
+                channels = requests.get(url, proxies=renpy.proxies).json()["releases"]
         else:
-            channels = requests.get(CHANNELS_URL).json()["releases"]
+            channels = requests.get(url, proxies=renpy.proxies).json()["releases"]
 
         persistent.has_update = False
 

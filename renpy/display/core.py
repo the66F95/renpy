@@ -108,6 +108,30 @@ enabled_events = {
     EVENTNAME,
     }
 
+input_events = {
+    pygame.KEYDOWN,
+    pygame.KEYUP,
+
+    pygame.TEXTEDITING,
+    pygame.TEXTINPUT,
+
+    pygame.MOUSEMOTION,
+    pygame.MOUSEBUTTONDOWN,
+    pygame.MOUSEBUTTONUP,
+    pygame.MOUSEWHEEL,
+
+    pygame.JOYAXISMOTION,
+    pygame.JOYHATMOTION,
+    pygame.JOYBALLMOTION,
+    pygame.JOYBUTTONDOWN,
+    pygame.JOYBUTTONUP,
+
+    pygame.CONTROLLERAXISMOTION,
+    pygame.CONTROLLERBUTTONDOWN,
+    pygame.CONTROLLERBUTTONUP,
+}
+
+
 # The number of msec between periodic events.
 PERIODIC_INTERVAL = 50
 
@@ -742,6 +766,9 @@ class Interface(object):
         # The time when the event was dispatched.
         self.event_time = 0
 
+        # The time of the last input event (mouse, keyboard, gamepad).
+        self.input_event_time = 0
+
         # The time we saw the last mouse event.
         self.mouse_event_time = None
 
@@ -1174,24 +1201,15 @@ class Interface(object):
         renpy.config.renderer = renderer
 
         if renpy.android or renpy.ios or renpy.emscripten:
-            renderers = [ "gles" ]
+            renderers = [ "gles2" ]
         elif renpy.windows:
-            renderers = [ "gl", "angle", "gles" ]
+            renderers = [ "gl2", "angle2", "gles2" ]
         else:
-            renderers = [ "gl", "gles" ]
-
-        gl2_renderers = [ ]
-
-        for i in [ "gl", "angle", "gles" ]:
-
-            if i in renderers:
-                gl2_renderers.append(i + "2")
-
-        renderers = gl2_renderers + renderers
+            renderers = [ "gl2", "gles2" ]
 
         # Prevent a performance warning if the renderer
         # is taken from old persistent data.
-        if renderer not in gl2_renderers and (renpy.macintosh or renpy.android or renpy.config.gl2):
+        if renderer not in renderers:
             renderer = "auto"
 
         # Software renderer is the last hope for PC .
@@ -1226,10 +1244,6 @@ class Interface(object):
                 renpy.display.log.exception()
 
                 return False
-
-        make_draw("gl", "renpy.gl.gldraw", "GLDraw", "gl")
-        make_draw("angle", "renpy.gl.gldraw", "GLDraw", "angle")
-        make_draw("gles", "renpy.gl.gldraw", "GLDraw", "gles")
 
         make_draw("gl2", "renpy.gl2.gl2draw", "GL2Draw", "gl2")
         make_draw("angle2", "renpy.gl2.gl2draw", "GL2Draw", "angle2")
@@ -1337,7 +1351,6 @@ class Interface(object):
             raise Exception("Could not set video mode.")
 
         renpy.session["renderer"] = draw.info["renderer"]
-        renpy.game.persistent._gl2 = renpy.config.gl2
 
         if renpy.android:
             android.init()
@@ -3231,6 +3244,9 @@ class Interface(object):
                 renpy.display.behavior.skipping(ev)
 
                 self.event_time = end_time = get_time()
+
+                if ev.type in input_events:
+                    self.input_event_time = self.event_time
 
                 try:
 

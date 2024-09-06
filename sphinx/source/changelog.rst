@@ -13,7 +13,13 @@ Changelog (Ren'Py 7.x-)
 Fixes
 -----
 
-Fast-skipping when slow-skipping (or vice versa) now cancels skipping.
+Using local shader variables by name in {shader} tags now works.
+
+Textshaders now work with very large sizes and numbers of characters.
+
+Lint avoids checking non-files as files.
+
+The show_done character callback is now called and documented.
 
 The web version of Ren'Py now saves persistent data when the screen is idle for .33 seconds.
 
@@ -24,6 +30,25 @@ being rapidly renamed.
 
 By default, synchronized start of audio now only occurs on looping channels, like music channels. The default
 can be changed on a channel-by-channel basis by supplying `synchro_start` to :func:`renpy.music.register_channel`.
+
+Other Changes
+-------------
+
+The new :func:`renpy.stop_skipping` cancels slow and fast skip.
+
+Fast-skipping when slow-skipping (or vice versa) now cancels skipping.
+
+On PC, Ren'Py will disable fullscreen when opening a URL.
+
+Ren'Py now correctly clips displayables that are positioned at negative offsets to the parent, provided the
+displayable does not exit the clip rectangle.
+
+:class:`AudioData` now explicitly supports video, and supports properties inside angles (like <from 1.0 to 6.0>).
+
+:var:`config.font_transforms` is now documented. This allows you to define new font transforms for accessibility
+purposes.
+
+The multiple argument to Character is now supplied to :doc:`character_callbacks`.
 
 
 .. _renpy-8.3.0:

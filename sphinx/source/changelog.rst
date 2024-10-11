@@ -4,6 +4,55 @@ Changelog (Ren'Py 7.x-)
 
 *There is also a list of* :doc:`incompatible changes <incompatible>`
 
+.. _renpy-8.3.3:
+.. _renpy-7.8.3:
+
+Fixes
+-----
+
+Changes to audio filters take place immediately after reload.
+
+
+Other Changes
+-------------
+
+The "Image Attributes" screen also indicates if transforms are applied to a layer, as it can be hard
+to determine otherwise.
+
+When :func:`renpy.set_audio_filter` is called with `immediate` false, the filter will be applied when
+the queued file is played, rather than at some indeterminate time in the future.
+
+When using text shaders to display text with outlines, Ren'Py will create psuedo-glyphs. These psuedo-glyphs
+cover the start and end of each line, and are used to ensure the outlines will be shown.
+
+.. _renpy-8.4.0:
+
+8.4.0
+=====
+
+Requirement and Dependency Changes
+----------------------------------
+
+Ren'Py now requires Windows 10 or later to run. This means that it will no longer run on Windows 7, 8, or 8.1.
+
+Ren'Py is no longer built for 32-bit ARM linux. This drops support for the Raspberry Pi 3, and very old Chromebooks.
+Ren'Py is still being built for 32-bit ARM Android.
+
+
+
+.. _renpy-8.3.2:
+.. _renpy-7.8.2:
+
+8.3.2 / 7.8.2
+=============
+
+Fixes
+-----
+
+Fixed a build issue with 8.3.1 and 7.8.1 that prevented the Android version of Ren'Py from starting properly,
+making games unplayable.
+
+
 .. _renpy-8.3.1:
 .. _renpy-7.8.1:
 

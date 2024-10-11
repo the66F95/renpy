@@ -36,6 +36,8 @@ import io
 import unicodedata
 import time
 
+from importlib.util import spec_from_loader
+
 from pygame_sdl2.rwobject import RWopsIO
 
 from renpy.compat.pickle import loads
@@ -818,14 +820,16 @@ class RenpyImporter(object):
 
         return None
 
-    def find_module(self, fullname, path=None):
+
+    def find_spec(self, fullname, path, target=None):
         if path is not None:
             for i in path:
                 if self.translate(fullname, i):
-                    return RenpyImporter(i)
+                    return spec_from_loader(name=fullname, loader=RenpyImporter(i), origin=path)
 
         if self.translate(fullname):
-            return self
+            return spec_from_loader(name=fullname, loader=self, origin=path)
+
 
     def load_module(self, fullname, mode="full"):
         """

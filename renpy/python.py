@@ -362,6 +362,18 @@ class LoadedVariables(ast.NodeVisitor):
         elif isinstance(node.ctx, ast.Store):
             self.stored.add(node.id)
 
+    def visit_MatchMapping(self, node):
+        if node.rest:
+            self.stored.add(node.rest)
+
+    def visit_MatchStar(self, node):
+        if node.name is not None:
+            self.stored.add(node.name)
+
+    def visit_MatchAs(self, node):
+        if node.name is not None:
+            self.stored.add(node.name)
+
     def visit_arg(self, node):
         self.stored.add(node.arg)
 
@@ -431,6 +443,34 @@ class WrapFormattedValue(ast.NodeTransformer):
 wrap_formatted_value = WrapFormattedValue().visit
 
 
+class FindStarredMatchPatterns(ast.NodeVisitor):
+    """
+    Given a match patten, return a list of (name, type) tuples, where type is "dict" or "list".
+    """
+
+    def __init__(self):
+        self.vars = [ ]
+
+    def visit_MatchStar(self, node: ast.MatchStar) -> Any:
+        self.generic_visit(node)
+        if node.name is not None:
+            self.vars.append((node.name, "list"))
+
+    def visit_MatchMapping(self, node: ast.MatchMapping) -> Any:
+        self.generic_visit(node)
+        if node.rest is not None:
+            self.vars.append((node.rest, "dict"))
+
+def find_starred_match_patterns(node):
+    """
+    Given a match pattern, return a list of (name, type) tuples, where type is "dict" or "list".
+    """
+
+    visitor = FindStarredMatchPatterns()
+    visitor.visit(node)
+    return visitor.vars
+
+
 class WrapNode(ast.NodeTransformer):
 
 
@@ -494,9 +534,7 @@ class WrapNode(ast.NodeTransformer):
                 args=[
                     ast.Name(id=var, ctx=ast.Load())
                 ],
-                keywords=[ ],
-                starargs=None,
-                kwargs=None)
+                keywords=[ ])
 
             assign = ast.Assign(
                 targets=[ ast.Name(id=var, ctx=ast.Store()) ],
@@ -529,9 +567,7 @@ class WrapNode(ast.NodeTransformer):
                 args=[
                     ast.Name(id=var, ctx=ast.Load())
                 ],
-                keywords=[ ],
-                starargs=None,
-                kwargs=None)
+                keywords=[ ])
 
             assign = ast.Assign(
                 targets=[ ast.Name(id=var, ctx=ast.Store()) ],
@@ -569,9 +605,7 @@ class WrapNode(ast.NodeTransformer):
                 args=[
                     ast.Name(id=var, ctx=ast.Load())
                 ],
-                keywords=[ ],
-                starargs=None,
-                kwargs=None)
+                keywords=[ ])
 
             assign = ast.Assign(
                 targets=[ ast.Name(id=var, ctx=ast.Store()) ],
@@ -579,6 +613,52 @@ class WrapNode(ast.NodeTransformer):
             )
 
             node.body.insert(0, assign)
+
+        return node
+
+    def wrap_match_case(self, node):
+
+        starred = find_starred_match_patterns(node.pattern)
+        if not starred:
+            return node
+
+        for var, kind in reversed(starred):
+
+            if kind == "list":
+                call = ast.Call(
+                    func=ast.Name(
+                        id="__renpy__list__",
+                        ctx=ast.Load()
+                        ),
+                    args=[
+                        ast.Name(id=var, ctx=ast.Load())
+                    ],
+                    keywords=[ ])
+
+                assign = ast.Assign(
+                    targets=[ ast.Name(id=var, ctx=ast.Store()) ],
+                    value=call,
+                )
+
+                node.body.insert(0, assign)
+
+            elif kind == "dict":
+                call = ast.Call(
+                    func=ast.Name(
+                        id="__renpy__dict__",
+                        ctx=ast.Load()
+                        ),
+                    args=[
+                        ast.Name(id=var, ctx=ast.Load())
+                    ],
+                    keywords=[ ])
+
+                assign = ast.Assign(
+                    targets=[ ast.Name(id=var, ctx=ast.Store()) ],
+                    value=call,
+                )
+
+                node.body.insert(0, assign)
 
         return node
 
@@ -624,9 +704,7 @@ class WrapNode(ast.NodeTransformer):
                 ctx=ast.Load()
                 ),
             args=[ self.wrap_generator(n) ],
-            keywords=[ ],
-            starargs=None,
-            kwargs=None)
+            keywords=[ ])
 
     def visit_Set(self, n):
 
@@ -636,9 +714,7 @@ class WrapNode(ast.NodeTransformer):
                 ctx=ast.Load()
                 ),
             args=[ self.generic_visit(n) ],
-            keywords=[ ],
-            starargs=None,
-            kwargs=None)
+            keywords=[ ])
 
     def visit_ListComp(self, n):
 
@@ -648,11 +724,10 @@ class WrapNode(ast.NodeTransformer):
                 ctx=ast.Load()
                 ),
             args=[ self.wrap_generator(n) ],
-            keywords=[ ],
-            starargs=None,
-            kwargs=None)
+            keywords=[ ])
 
     def visit_List(self, n):
+
         if not isinstance(n.ctx, ast.Load):
             return self.generic_visit(n)
 
@@ -662,9 +737,7 @@ class WrapNode(ast.NodeTransformer):
                 ctx=ast.Load()
                 ),
             args=[ self.generic_visit(n) ],
-            keywords=[ ],
-            starargs=None,
-            kwargs=None)
+            keywords=[ ])
 
     def visit_DictComp(self, n):
         return ast.Call(
@@ -673,9 +746,7 @@ class WrapNode(ast.NodeTransformer):
                 ctx=ast.Load()
                 ),
             args=[ self.wrap_generator(n) ],
-            keywords=[ ],
-            starargs=None,
-            kwargs=None)
+            keywords=[ ])
 
     def visit_Dict(self, n):
 
@@ -685,14 +756,18 @@ class WrapNode(ast.NodeTransformer):
                 ctx=ast.Load()
                 ),
             args=[ self.generic_visit(n) ],
-            keywords=[ ],
-            starargs=None,
-            kwargs=None)
-
+            keywords=[ ])
 
     def visit_FormattedValue(self, n):
         n = wrap_formatted_value(n)
         return self.generic_visit(n)
+
+    def visit_Match(self, node : ast.Match) -> Any:
+        n : ast.Match = self.generic_visit(node) # type: ignore
+        n.cases = [ self.wrap_match_case(i) for i in n.cases ]
+        return n
+
+
 
 wrap_node = WrapNode()
 
@@ -1014,34 +1089,19 @@ def py_compile(source, mode, filename='<none>', lineno=1, ast_node=False, cache=
             py_mode = mode
 
         flags = file_compiler_flags.get(filename, 0)
+        flags |= new_compile_flags
 
-        if flags:
-
-            flags |= new_compile_flags
-
-            try:
-                with save_warnings():
-                    tree = compile(source, filename, py_mode, ast.PyCF_ONLY_AST | flags, 1)
-            except SyntaxError as orig_e:
-
-                try:
-                    fixed_source = renpy.compat.fixes.fix_tokens(source)
-                    with save_warnings():
-                        tree = compile(fixed_source, filename, py_mode, ast.PyCF_ONLY_AST | flags, 1)
-                except Exception:
-                    raise orig_e
-
-        else:
+        try:
+            with save_warnings():
+                tree = compile(source, filename, py_mode, ast.PyCF_ONLY_AST | flags, 1)
+        except SyntaxError as orig_e:
 
             try:
-                flags = new_compile_flags
+                fixed_source = renpy.compat.fixes.fix_tokens(source)
                 with save_warnings():
-                    tree = compile(source, filename, py_mode, ast.PyCF_ONLY_AST | flags, 1)
+                    tree = compile(fixed_source, filename, py_mode, ast.PyCF_ONLY_AST | flags, 1)
             except Exception:
-                flags = old_compile_flags
-                source = escape_unicode(source)
-                with save_warnings():
-                    tree = compile(source, filename, py_mode, ast.PyCF_ONLY_AST | flags, 1)
+                raise orig_e
 
         tree = wrap_node.visit(tree)
 

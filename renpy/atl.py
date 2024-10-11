@@ -422,7 +422,7 @@ class ATLTransformBase(renpy.object.Object):
             rv_parameters = []
             for name, value in self.context.context.items():
                 if name not in self.parameters.parameters:
-                    rv_parameters.append(ValuedParameter(name, ValuedParameter.KEYWORD_ONLY, value))
+                    rv_parameters.append(ValuedParameter(name, ValuedParameter.KEYWORD_ONLY, default=value))
             if rv_parameters:
                 rv_parameters = list(self.parameters.parameters.values()) + rv_parameters
                 rv_parameters.sort(key=lambda p: p.kind)
@@ -657,10 +657,10 @@ class ATLTransformBase(renpy.object.Object):
             #     continue
 
             if passed: # turn into elif when possible
-                param = ValuedParameter(name, param.KEYWORD_ONLY, scope[name])
+                param = ValuedParameter(name, param.KEYWORD_ONLY, default=scope[name])
 
             elif param.has_default:
-                param = ValuedParameter(name, pkind, scope[name])
+                param = ValuedParameter(name, pkind, default=scope[name])
 
             else:
                 ## not passed and no default value
@@ -1146,6 +1146,16 @@ compatible_pairs = [
 # values of the variables here.
 
 
+def check_spline_types(value):
+    if isinstance(value, (position, int, float)):
+        return True
+
+    if isinstance(value, tuple):
+        return all(check_spline_types(i) for i in value)
+
+    return False
+
+
 class RawMultipurpose(RawStatement):
 
     warp_function = None
@@ -1207,15 +1217,6 @@ class RawMultipurpose(RawStatement):
     def compile(self, ctx): # @ReservedAssignment
 
         compiling(self.loc)
-
-        def check_spline_types(value):
-            if isinstance(value, (position, int, float)):
-                return True
-
-            if isinstance(value, tuple):
-                return all(check_spline_types(i) for i in value)
-
-            return False
 
         # Figure out what kind of statement we have. If there's no
         # interpolator, and no properties, than we have either a

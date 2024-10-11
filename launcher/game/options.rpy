@@ -301,6 +301,8 @@ init python:
     build.classify_renpy("**.new", None)
     build.classify_renpy("**.bak", None)
 
+    build.classify_renpy("**.keystore", None)
+
     build.classify_renpy("**/log.txt", None)
     build.classify_renpy("**/traceback.txt", None)
     build.classify_renpy("**/errors.txt", None)
@@ -355,6 +357,7 @@ init python:
 
         build.classify_renpy(pattern + "/**", source)
 
+    build.classify_renpy("renpy/gl/", None)
 
     build.classify_renpy("renpy.py", "binary")
     source_and_binary("renpy")
@@ -411,7 +414,7 @@ init python:
     build.classify_renpy("lib/**/*steam_api*", "steam")
     build.classify_renpy("lib/**/*Live2D*", None)
 
-    build.classify_renpy("lib/py3-linux-armv7l/**", "linux_arm")
+    build.classify_renpy("lib/py3-linux-armv7l/**", None)
     build.classify_renpy("lib/py3-linux-aarch64/**", "linux_arm")
     source_and_binary("lib/py3-**", "binary", "binary")
     source_and_binary("lib/python3**", "binary", "binary", py='pyc')

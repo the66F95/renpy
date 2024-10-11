@@ -336,12 +336,14 @@ class Viewport(renpy.display.layout.Container):
         else:
             inside = True
 
-        # True if the player can drag the viewoport.
+        # True if the player can drag the viewport.
         draggable = self.draggable and (self.xadjustment.range or self.yadjustment.range)
 
         grab = renpy.display.focus.get_grab()
 
-        if draggable:
+        if (grab is not None) and getattr(grab, '_draggable', False) and (grab is not self):
+            self.drag_position = None
+        elif draggable:
             if grab is None and renpy.display.behavior.map_event(ev, 'viewport_drag_end'):
                 self.drag_position = None
         else:
@@ -349,24 +351,22 @@ class Viewport(renpy.display.layout.Container):
 
         if inside and draggable and (self.drag_position is not None) and (grab is not self):
 
-            focused = renpy.display.focus.get_focused()
+            if ev.type == pygame.MOUSEMOTION:
 
-            if (focused is None) or (focused is self) or not focused._draggable:
+                oldx, oldy = self.drag_position
 
-                if ev.type == pygame.MOUSEMOTION:
+                grabbed = getattr(grab, "_draggable", False) and grab.is_focused()
 
-                    oldx, oldy = self.drag_position
+                if math.hypot(oldx - x, oldy - y) >= renpy.config.viewport_drag_radius and not grabbed:
+                    rv = renpy.display.focus.force_focus(self)
+                    renpy.display.focus.set_grab(self)
+                    self.drag_position = (x, y)
+                    self.drag_position_time = st
+                    self.drag_speed = (0.0, 0.0)
+                    grab = self
 
-                    if math.hypot(oldx - x, oldy - y) >= renpy.config.viewport_drag_radius:
-                        rv = renpy.display.focus.force_focus(self)
-                        renpy.display.focus.set_grab(self)
-                        self.drag_position = (x, y)
-                        self.drag_position_time = st
-                        self.drag_speed = (0.0, 0.0)
-                        grab = self
-
-                        if rv is not None:
-                            return rv
+                    if rv is not None:
+                        return rv
 
         if renpy.display.focus.get_grab() == self:
 
@@ -538,19 +538,6 @@ class Viewport(renpy.display.layout.Container):
                 else:
                     raise renpy.display.core.IgnoreEvent()
 
-        if inside and draggable:
-
-            focused = renpy.display.focus.get_focused()
-
-            if (focused is self) or (focused is None) or (not focused._draggable):
-                if renpy.display.behavior.map_event(ev, 'viewport_drag_start'):
-                    self.drag_position = (x, y)
-                    self.drag_position_time = st
-                    self.drag_speed = (0.0, 0.0)
-
-                    self.xadjustment.end_animation(instantly=True)
-                    self.yadjustment.end_animation(instantly=True)
-
         if inside and self.edge_size and ev.type in [ pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP ]:
 
             def speed(n, zero, one):
@@ -584,10 +571,28 @@ class Viewport(renpy.display.layout.Container):
             else:
                 self.edge_last_st = None
 
+        ignore_event = False
+
+        if inside and draggable:
+
+            if renpy.display.behavior.map_event(ev, 'viewport_drag_start'):
+
+                self.drag_position = (x, y)
+                self.drag_position_time = st
+                self.drag_speed = (0.0, 0.0)
+
+                self.xadjustment.end_animation(instantly=True)
+                self.yadjustment.end_animation(instantly=True)
+
+                ignore_event = True
+
         rv = super(Viewport, self).event(ev, x, y, st)
 
         if rv is not None:
             return rv
+
+        if ignore_event:
+            raise renpy.display.core.IgnoreEvent()
 
         return None
 

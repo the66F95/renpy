@@ -40,7 +40,7 @@ import pygame_sdl2
 try:
     import emscripten
 except ImportError:
-    pass
+    emscripten = None
 
 import renpy.audio.sound as sound
 import renpy.audio.music as music
@@ -488,6 +488,7 @@ from renpy.exports.persistentexports import (
     mark_image_unseen,
     save_persistent,
     is_seen,
+    is_seen_allowed,
 )
 
 from renpy.exports.platformexports import (

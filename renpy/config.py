@@ -886,7 +886,7 @@ loadable_callback = None
 
 # How many frames should be drawn fast each time the screen needs to be
 # updated?
-fast_redraw_frames = 4
+fast_redraw_frames = 12
 
 # The color passed to glClearColor when clearing the screen.
 gl_clear_color = "#000"
@@ -1503,6 +1503,8 @@ interface_layer = "screens"
 # Should Transform crop be limited to the width and height of the image being cropped?
 limit_transform_crop = False
 
+# Marking labels, images and audio in replays as seen is not allowed.
+no_replay_seen = False
 
 
 del os

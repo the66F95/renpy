@@ -12,6 +12,25 @@ features.
 Incompatible changes to the GUI are documented at :ref:`gui-changes`, as
 such changes only take effect when the GUI is regenerated.
 
+.. _incompatible-8.4.0:
+
+8.4.0
+-----
+
+**Show expression.** The ``show expression`` statement has been changed so that::
+
+    show expression "bg washington"
+
+is exactly equivalent to:
+
+    show bg washington
+
+Previously, this would use the expression itself as the tag. When the expression is not a string,
+a unique tag is created for the show expression statement. This change can be reverted with::
+
+    define config.old_show_expression = True
+
+
 .. _incompatible-8.3.0:
 .. _incompatible-7.8.0:
 

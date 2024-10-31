@@ -1506,6 +1506,8 @@ limit_transform_crop = False
 # Marking labels, images and audio in replays as seen is not allowed.
 no_replay_seen = False
 
+# Should we use pre-8.4 show expression behavior?
+old_show_expression = False
 
 del os
 del collections

@@ -1116,9 +1116,9 @@ class Button(renpy.display.layout.Window):
         # If we have a child, try passing the event to it. (For keyboard
         # events, this only happens if we're focused.)
         if (not (ev.type in KEY_EVENTS)) or self.style.key_events:
-                rv = super(Button, self).event(ev, x, y, st)
-                if rv is not None:
-                    return rv
+            rv = super(Button, self).event(ev, x, y, st)
+            if rv is not None:
+                return rv
         else:
 
             # Used to prevent keymaps (the key statement) from reacting to
@@ -1384,7 +1384,7 @@ class CaretBlink(renpy.display.displayable.Displayable):
         st -= self.st_base
 
         cr = renpy.display.render.render(self.caret, width, height, st, at)
-        rv = renpy.display.render.Render(1, height)
+        rv = renpy.display.render.Render(cr.width, height)
 
         ttl = self.caret_blink - st % self.caret_blink
 
@@ -1413,6 +1413,7 @@ class Input(renpy.text.text.Text): # @UndefinedVariable
     shown = False
     multiline = False
     action = None
+    arrowkeys = True
 
     st = 0
 
@@ -1434,6 +1435,7 @@ class Input(renpy.text.text.Text): # @UndefinedVariable
                  caret_blink=None,
                  multiline=False,
                  action=None,
+                 arrowkeys=True,
                  **properties):
 
         super(Input, self).__init__("", style=style, replaces=replaces, substitute=False, **properties)
@@ -1471,6 +1473,8 @@ class Input(renpy.text.text.Text): # @UndefinedVariable
         self.multiline = multiline
 
         self.action = action
+
+        self.arrowkeys = arrowkeys
 
         caretprops = { 'color' : None }
 
@@ -1544,15 +1548,28 @@ class Input(renpy.text.text.Text): # @UndefinedVariable
 
         def set_content(content):
 
-            if content == "":
-                content = "\u200b"
-
             if editable:
                 l = len(content)
-                self.set_text([self.prefix, content[0:self.caret_pos].replace("{", "{{"), edit_text, caret,
-                               content[self.caret_pos:l].replace("{", "{{"), self.suffix])
+                caret_content = [
+                    self.prefix,
+                    content[0:self.caret_pos].replace("{", "{{"),
+                    edit_text,
+                    caret,
+                    content[self.caret_pos:l].replace("{", "{{"),
+                    self.suffix
+                    ]
+
             else:
-                self.set_text([self.prefix, content.replace("{", "{{"), self.suffix ])
+                caret_content = [
+                    self.prefix,
+                    content.replace("{", "{{"),
+                    self.suffix
+                ]
+
+            if not content:
+                caret_content.append("{space=1}")
+
+            self.set_text(caret_content)
 
             if isinstance(self.caret, CaretBlink):
                 self.caret.st_base = self.st
@@ -1676,7 +1693,7 @@ class Input(renpy.text.text.Text): # @UndefinedVariable
             if not self.changed:
                 return content
 
-        elif map_event(ev, "input_left"):
+        elif map_event(ev, "input_left") and self.arrowkeys:
             if self.caret_pos > 0:
                 self.caret_pos -= 1
                 self.update_text(self.content, self.editable)
@@ -1684,7 +1701,7 @@ class Input(renpy.text.text.Text): # @UndefinedVariable
             renpy.display.render.redraw(self, 0)
             raise renpy.display.core.IgnoreEvent()
 
-        elif map_event(ev, "input_jump_word_left"):
+        elif map_event(ev, "input_jump_word_left") and self.arrowkeys:
             if self.caret_pos > 0:
                 space_pos = 0
                 for item in re.finditer(r"\s+", self.content[:self.caret_pos]):
@@ -1697,7 +1714,7 @@ class Input(renpy.text.text.Text): # @UndefinedVariable
             renpy.display.render.redraw(self, 0)
             raise renpy.display.core.IgnoreEvent()
 
-        elif map_event(ev, "input_right"):
+        elif map_event(ev, "input_right") and self.arrowkeys:
             if self.caret_pos < l:
                 self.caret_pos += 1
                 self.update_text(self.content, self.editable)
@@ -1705,7 +1722,7 @@ class Input(renpy.text.text.Text): # @UndefinedVariable
             renpy.display.render.redraw(self, 0)
             raise renpy.display.core.IgnoreEvent()
 
-        elif map_event(ev, "input_jump_word_right"):
+        elif map_event(ev, "input_jump_word_right") and self.arrowkeys:
             if self.caret_pos < l:
                 space_pos = l
                 for item in re.finditer(r"\s+", self.content[self.caret_pos + 1:]):

@@ -21,6 +21,9 @@ Ren'Py is still being built for 32-bit ARM Android.
 Features
 --------
 
+The :ref:`input <sl-input>` displayable now takes an `arrowkeys` property, which controls whether the arrow keys
+can be used to move the cursor in the input, or are used to move the focus between displayables.
+
 The :var:`config.translate_additional_strings_callbacks` callbacks make it possible for a game to offer
 additional to be added to translation files. (For example, strings from third-party libraries or data files.)
 
@@ -45,6 +48,15 @@ rather than the default bilinear scaling.
 The "Image Attributes" screen also indicates if transforms are applied to a layer, as it can be hard
 to determine otherwise.
 
+
+.. _renpy-8.3.4:
+.. _renpy-7.8.4:
+
+Other Changes
+-------------
+
+The new :func:`renpy.get_statement_name` function returns the name of the currently
+executing Ren'Py statement, the same name given to :var:`config.statement_callbacks`.
 
 
 .. _renpy-8.3.3:

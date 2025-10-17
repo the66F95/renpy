@@ -682,11 +682,20 @@ init python in project:
             if self.has_game(d):
                 return d
 
-            if d.endswith(".app"):
-                dn = os.path.join(d, "Contents", "Resources", "autorun")
+            dn = os.path.join(d, "Contents", "Resources", "autorun")
 
-                if self.has_game(dn):
-                    return dn
+            if self.has_game(dn):
+                return dn
+
+            apps = [ i for i in os.listdir(d) if i.endswith(".app") ]
+            if len(apps) != 1:
+                return None
+
+            dn = apps[0]
+            dn = os.path.join(d, dn, "Contents", "Resources", "autorun")
+
+            if self.has_game(dn):
+                return dn
 
             return None
 
